@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: quiz_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: quiz_user
+      POSTGRES_PASSWORD: quiz_password
+      POSTGRES_DB: quizplatform_db1
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-fixed.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quiz_user -d quizplatform_db1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: quiz_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: quiz_mailhog
+    restart: unless-stopped
+    ports:
+      - "11025:1025"    
+      - "18025:8025"   
+
+  backend:
+    build: .
+    container_name: quiz_backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://quiz_user:quiz_password@postgres:5432/quizplatform_db1
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: quiz-platform-super-secret-key-2024
+      JWT_SECRET_KEY: jwt-super-secret-key-change-this
+      
+      SMTP_SERVER: host.docker.internal  
+      SMTP_PORT: 11025                   
+      SMTP_USERNAME: ''                  
+      SMTP_PASSWORD: ''                  
+      FROM_EMAIL: noreply@quizplatform.com
+      EMAIL_ENABLED: '1'                 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailhog:
+        condition: service_started
+    command: >
+      bash -c "sleep 10 && python app.py"
+
+volumes:
+  postgres_data:
+  redis_data:
