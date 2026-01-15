@@ -13,13 +13,24 @@ from dto import (
 from models import User, db, ROLE_PLAYER, ROLE_MODERATOR, ROLE_ADMIN
 from auth import token_required, role_required
 from config import Config
-from email_service import email_service
+
+# ✅ DODAJ IMPORT EMAIL SERVISA:
+try:
+    from email_service import email_service
+    logger = logging.getLogger(__name__)
+    logger.info("✅ EmailService imported successfully")
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.error(f"❌ Failed to import email_service: {e}")
+    # Kreiraj dummy email_service da ne crash-uje aplikacija
+    class DummyEmailService:
+        def send_role_change_email(self, *args, **kwargs):
+            logger.warning("DummyEmailService: Email not sent (service not available)")
+            return True
+    email_service = DummyEmailService()
 
 # Blueprint
 users_bp = Blueprint('users', __name__)
-
-# Logger
-logger = logging.getLogger(__name__)
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -260,18 +271,22 @@ def change_user_role(user_id, target_user_id):
         
         logger.info(f"Admin {user_id} changed role for user {target_user.email} from {old_role} to {data.role}")
         
-        # Slanje email notifikacije 
-        if Config.EMAIL_ENABLED:
-            try:
-                email_service.send_role_change_email(
-                    to_email=target_user.email,
-                    first_name=target_user.first_name,
-                    old_role=old_role,
-                    new_role=data.role
-                )
-                logger.info(f"Role change email sent to {target_user.email}")
-            except Exception as e:
-                logger.warning(f"Failed to send role change email: {e}")
+        # ✅ ✅ ✅ DODAJ OVAJ KOD ZA SLANJE EMAILA:
+        try:
+            logger.info(f"🔄 Attempting to send role change email to {target_user.email}")
+            success = email_service.send_role_change_email(
+                to_email=target_user.email,
+                first_name=target_user.first_name,
+                old_role=old_role,
+                new_role=data.role
+            )
+            if success:
+                logger.info(f"✅ Role change email SENT to {target_user.email}")
+            else:
+                logger.warning(f"⚠️ Role change email might not have been sent to {target_user.email}")
+        except Exception as email_error:
+            logger.error(f"❌ Failed to send role change email to {target_user.email}: {email_error}")
+            # Ne vraća grešku - samo loguj
         
         return jsonify({
             'message': f'Uloga korisnika {target_user.email} promenjena iz {old_role} u {data.role}',
@@ -341,12 +356,14 @@ def toggle_user_block(user_id, target_user_id):
         
         if block:
             # Blokiranje
-            target_user.block(hours=hours)
+            target_user.is_blocked = True
+            target_user.blocked_until = datetime.utcnow() + timedelta(hours=hours)
             action = "blokiran"
             message = f"Korisnik {target_user.email} blokiran na {hours} sati"
         else:
             # Odblokiranje
-            target_user.unblock()
+            target_user.is_blocked = False
+            target_user.blocked_until = None
             action = "odblokiran"
             message = f"Korisnik {target_user.email} odblokiran"
         

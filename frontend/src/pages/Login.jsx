@@ -30,7 +30,6 @@ const Login = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [blockedInfo, setBlockedInfo] = useState(null)
-  const [attemptsLeft, setAttemptsLeft] = useState(null)
   const [showPassword, setShowPassword] = useState(false)
   
   const { login } = useAuth()
@@ -40,7 +39,7 @@ const Login = () => {
     e.preventDefault()
     
     if (!email || !password) {
-      setError('Please fill in all fields')
+      setError('Molimo unesite sve podatke')
       return
     }
     
@@ -48,7 +47,6 @@ const Login = () => {
     setLoading(true)
     setError('')
     setBlockedInfo(null)
-    setAttemptsLeft(null)
     
     try {
       const result = await login(email, password)
@@ -64,18 +62,16 @@ const Login = () => {
             until: result.blocked_until,
             remaining: result.remaining_seconds
           })
-          setError('Account temporarily blocked due to too many failed attempts')
-        } else if (result.attempts_left !== undefined) {
-          setAttemptsLeft(result.attempts_left)
-          setError(result.error || 'Invalid credentials')
+          setError('Nalog je privremeno blokiran zbog previše neuspešnih pokušaja')
         } else {
-          setError(result.error || 'Login failed')
+          // OVO JE KLJUČNA PROMENA: Prikazujemo samo osnovnu grešku
+          setError(result.error || 'Pogrešan email ili lozinka')
         }
       }
       
     } catch (err) {
       console.error(' LOGIN ERROR:', err)
-      setError(err.message || 'An unexpected error occurred')
+      setError(err.message || 'Došlo je do greške. Pokušajte ponovo.')
     } finally {
       setLoading(false)
     }
@@ -102,14 +98,14 @@ const Login = () => {
              Quiz Platform
           </Typography>
           <Typography variant="h5" color="textSecondary" gutterBottom>
-            Distributed Systems Project 2025/2026
+            Distribuirani računarski sistemi 2025/2026
           </Typography>
           <Typography variant="body1" color="textSecondary">
-            Sign in to access the platform
+            Prijavite se za pristup platformi
           </Typography>
         </Box>
 
-        {/* BLOCKED ACCOUNT WARNING */}
+        {/* BLOCKED ACCOUNT WARNING - OVAJ DEO OSTAJEMO */}
         {blockedInfo && (
           <Alert 
             severity="warning" 
@@ -118,46 +114,26 @@ const Login = () => {
             onClose={() => setBlockedInfo(null)}
           >
             <Typography variant="subtitle2" fontWeight="bold">
-              Account Temporarily Blocked
+              Nalog privremeno blokiran
             </Typography>
             <Typography variant="body2">
-              Too many failed login attempts. Account is blocked for {formatBlockedTime(blockedInfo.remaining)} minutes.
-            </Typography>
-            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-              Blocked until: {new Date(blockedInfo.until).toLocaleTimeString()}
+              Previše neuspešnih pokušaja. Nalog je blokiran na {formatBlockedTime(blockedInfo.remaining)} minuta.
             </Typography>
           </Alert>
         )}
 
-        {/* ATTEMPTS LEFT WARNING */}
-        {attemptsLeft !== null && (
-          <Alert 
-            severity="info"
-            sx={{ mb: 3, borderRadius: 2 }}
-            onClose={() => setAttemptsLeft(null)}
-          >
-            <Typography variant="subtitle2" fontWeight="bold">
-              Login Failed
-            </Typography>
-            <Typography variant="body2">
-              Attempts remaining: <strong>{attemptsLeft}</strong>
-            </Typography>
-            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-              After 3 failed attempts, account will be blocked for 1 minute.
-            </Typography>
-          </Alert>
-        )}
+        {/* OVO JE UKLONJENO:
+          1. ATTEMPTS LEFT WARNING (ceo Alert komponent)
+          2. Poruke "Login Failed", "Attempts remaining", "After 3 failed attempts"
+        */}
 
-        {/* ERROR DISPLAY */}
+        {/* ERROR DISPLAY - OVO OSTAJEMO, ALI BEZ "Login Error:" naslova */}
         {error && !blockedInfo && (
           <Alert 
             severity="error" 
             sx={{ mb: 3, borderRadius: 2 }}
             onClose={() => setError('')}
           >
-            <Typography variant="subtitle2" fontWeight="bold">
-              Login Error:
-            </Typography>
             <Typography variant="body2">
               {error}
             </Typography>
@@ -167,7 +143,7 @@ const Login = () => {
         <form onSubmit={handleSubmit}>
           <TextField
             fullWidth
-            label="Email Address"
+            label="Email adresa"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -187,7 +163,7 @@ const Login = () => {
 
           <TextField
             fullWidth
-            label="Password"
+            label="Lozinka"
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -235,19 +211,19 @@ const Login = () => {
               }
             }}
           >
-            {loading ? 'Signing In...' : blockedInfo ? 'Account Blocked' : 'Sign In'}
+            {loading ? 'Prijavljivanje...' : blockedInfo ? 'Nalog blokiran' : 'Prijavi se'}
           </Button>
         </form>
 
         <Divider sx={{ my: 3 }}>
           <Typography variant="body2" color="textSecondary">
-            OR
+            ILI
           </Typography>
         </Divider>
 
         <Box textAlign="center">
           <Typography variant="body1" color="textSecondary" gutterBottom>
-            Don't have an account?
+            Nemate nalog?
           </Typography>
           <Button
             component={RouterLink}
@@ -261,7 +237,7 @@ const Login = () => {
               px: 4
             }}
           >
-            Create New Account
+            Kreiraj novi nalog
           </Button>
         </Box>
       </Paper>

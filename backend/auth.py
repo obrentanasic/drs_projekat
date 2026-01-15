@@ -1,27 +1,46 @@
 import jwt
 from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from functools import wraps
 import redis
 import logging
+import requests
+from werkzeug.exceptions import TooManyRequests
 
 from config import Config
 from models import User, LoginAttempt, db
 from dto import UserLoginDTO, UserRegisterDTO, UserResponseDTO, LoginResponseDTO, RegisterResponseDTO, ErrorResponseDTO
 
+# Kreiranje loggera PRVO
+logger = logging.getLogger(__name__)
+
 # Blueprint
 auth_bp = Blueprint('auth', __name__)
 
-# Redis (za keš - po specifikaciji!)
-redis_client = redis.from_url(Config.REDIS_URL)
-
-# Logger
-logger = logging.getLogger(__name__)
+# Redis konekcija sa fallback-om na localhost
+try:
+    redis_client = None
+    try:
+        redis_client = redis.Redis(host='redis', port=6379, decode_responses=True, socket_connect_timeout=2)
+        redis_client.ping()
+        logger.info("✓ Redis connected on 'redis' host")
+    except:
+        redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True, socket_connect_timeout=2)
+        redis_client.ping()
+        logger.info("✓ Redis connected on 'localhost'")
+except Exception as e:
+    logger.warning(f"✗ Redis connection failed: {e}")
+    logger.info("⚠ Running without Redis - tokens won't be blacklisted")
+    redis_client = None
 
 # ==================== HELPER FUNCTIONS ====================
 
 def add_to_blacklist(token, expires_in):
     """Dodaje token u blacklist (Redis keš)"""
+    if not redis_client:
+        logger.warning("Redis not available - cannot blacklist token")
+        return False
+    
     try:
         redis_client.setex(f"blacklist:{token}", expires_in, "1")
         logger.debug(f"Token added to blacklist: {token[:20]}...")
@@ -32,23 +51,33 @@ def add_to_blacklist(token, expires_in):
 
 def is_token_blacklisted(token):
     """Proverava da li je token u blacklist-u"""
-    return redis_client.exists(f"blacklist:{token}") > 0
+    if not redis_client:
+        return False
+    try:
+        return redis_client.exists(f"blacklist:{token}") > 0
+    except Exception as e:
+        logger.error(f"Redis error checking blacklist: {e}")
+        return False
 
 def record_login_attempt(email, successful, ip_address=None, user_agent=None):
     """Beleženje pokušaja prijave (istorija u PostgreSQL)"""
     try:
+        ip_addr = ip_address or request.remote_addr if request else "unknown"
+        ua = user_agent or (request.user_agent.string if request and request.user_agent else None)
+        
         attempt = LoginAttempt(
             email=email,
             successful=successful,
-            ip_address=ip_address or request.remote_addr,
-            user_agent=user_agent or (request.user_agent.string if request.user_agent else None)
+            ip_address=ip_addr,
+            user_agent=ua
         )
         db.session.add(attempt)
         db.session.commit()
         return True
     except Exception as e:
         logger.error(f"Error recording login attempt: {e}")
-        db.session.rollback()
+        if db.session:
+            db.session.rollback()
         return False
 
 def generate_tokens(user_id, role):
@@ -88,6 +117,43 @@ def generate_tokens(user_id, role):
     except Exception as e:
         logger.error(f"Error generating tokens: {e}")
         raise
+
+def check_login_blocked(identifier):
+    """Proverava da li je identifier (email/IP) blokiran"""
+    try:
+        response = requests.get(
+            f'http://localhost:{Config.PORT}/api/auth/login-status/{identifier}',
+            timeout=2
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return data['blocked'], data['time_left_seconds']
+    except Exception as e:
+        logger.warning(f"Could not check rate limiting service: {e}")
+    
+    return False, 0
+
+def report_failed_login(identifier):
+    """Prijavi neuspešan login rate limiting servisu"""
+    try:
+        requests.post(
+            f'http://localhost:{Config.PORT}/api/auth/login-failed',
+            json={'identifier': identifier},
+            timeout=1
+        )
+    except Exception as e:
+        logger.debug(f"Failed to report failed login: {e}")
+
+def report_successful_login(identifier):
+    """Prijavi uspešan login rate limiting servisu"""
+    try:
+        requests.post(
+            f'http://localhost:{Config.PORT}/api/auth/login-success',
+            json={'identifier': identifier},
+            timeout=1
+        )
+    except Exception as e:
+        logger.debug(f"Failed to report successful login: {e}")
 
 # ==================== DECORATORS ====================
 
@@ -185,7 +251,13 @@ def role_required(*roles):
 def register():
     """Registracija novog korisnika (po specifikaciji)"""
     try:
-        # Koristi DTO za validaciju
+        # Proveri da li postoji JSON
+        if not request.is_json:
+            return jsonify(ErrorResponseDTO(
+                error='JSON data je obavezan',
+                code='json_required'
+            ).dict()), 400
+        
         data = UserRegisterDTO(**request.json)
         
         # Provera da li email već postoji
@@ -195,7 +267,6 @@ def register():
                 code='email_exists'
             ).dict()), 400
         
-        # Kreiranje korisnika (po specifikaciji: sva polja)
         user = User(
             first_name=data.first_name,
             last_name=data.last_name,
@@ -237,86 +308,121 @@ def register():
             code='validation_error'
         ).dict()), 400
     except Exception as e:
-        db.session.rollback()
+        if db.session:
+            db.session.rollback()
         logger.error(f"Registration error: {e}")
         return jsonify(ErrorResponseDTO(
             error='Greška pri registraciji',
-            code='registration_error'
+            code='registration_error',
+            details=str(e) if Config.FLASK_DEBUG else None
         ).dict()), 500
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """Prijava korisnika (po specifikaciji: 3 neuspešna pokušaja = blokada 1 minut)"""
+    """Prijava korisnika (po specifikaciji: 3 neuspešna pokušaja = blokada 15 minuta)"""
     try:
+        # Proveri da li postoji JSON
+        if not request.is_json:
+            return jsonify(ErrorResponseDTO(
+                error='JSON data je obavezan',
+                code='json_required'
+            ).dict()), 400
+        
         # Koristi DTO za validaciju
         data = UserLoginDTO(**request.json)
-        email = data.email
+        email = data.email.lower()
+        ip_address = request.remote_addr
         
-        logger.info(f"Login attempt for email: {email}")
+        logger.info(f"Login attempt from {ip_address} for email: {email}")
         
-        # Pronalaženje korisnika
+        blocked, time_left = check_login_blocked(email)
+        if blocked:
+            minutes = time_left // 60
+            seconds = time_left % 60
+            logger.warning(f"Blocked login attempt for {email} - {minutes}m {seconds}s remaining")
+            
+            return jsonify(ErrorResponseDTO(
+                error='Nalog je privremeno blokiran',
+                code='account_blocked',
+                details={
+                    'message': f'Previše neuspešnih pokušaja. Pokušajte ponovo za {minutes}m {seconds}s.',
+                    'time_left_seconds': time_left,
+                    'retry_after': f"{minutes}:{seconds:02d}"
+                }
+            ).dict()), 429 
+        
+        # Proveri i po IP adresi
+        blocked_ip, _ = check_login_blocked(ip_address)
+        if blocked_ip:
+            logger.warning(f"Blocked IP login attempt: {ip_address}")
+            return jsonify(ErrorResponseDTO(
+                error='IP adresa je blokirana',
+                code='ip_blocked',
+                details={'message': 'Previše neuspešnih pokušaja sa ove IP adrese'}
+            ).dict()), 429
+        
+        # 2. PRONALAŽENJE KORISNIKA
         user = User.query.filter_by(email=email).first()
         
         if not user:
             logger.warning(f"User not found: {email}")
-            record_login_attempt(email, False)
+            
+            # Evidentiraj neuspešan pokušaj u sistem
+            report_failed_login(email)
+            report_failed_login(ip_address)
+            record_login_attempt(email, False, ip_address)
+            
             return jsonify(ErrorResponseDTO(
                 error='Pogrešan email ili lozinka',
                 code='invalid_credentials',
                 details={'attempts_left': 2}
             ).dict()), 401
         
-        # Provera blokade (po specifikaciji)
-        if user.is_login_blocked():
-            remaining = (user.blocked_until - datetime.utcnow()).seconds
-            logger.warning(f"Blocked user tried to login: {email}, remaining: {remaining}s")
-            return jsonify(LoginResponseDTO(
-                success=False,
-                message='Nalog je privremeno blokiran',
-                access_token='',
-                user=UserResponseDTO(**user.to_dict()),
-                blocked=True,
-                blocked_until=user.blocked_until.isoformat(),
-                remaining_seconds=remaining
-            ).dict()), 403
-        
-        # Provera lozinke
+        # 3. PROVERA LOZINKE
         if not user.check_password(data.password):
             logger.warning(f"Wrong password for: {email}")
             
             # Evidentiraj neuspešan pokušaj
+            report_failed_login(email)
+            report_failed_login(ip_address)
+            record_login_attempt(email, False, ip_address)
+            
+            # Ažuriraj u bazi
             user.record_failed_login()
-            record_login_attempt(email, False)
             db.session.commit()
             
-            # Ako je sada blokiran nakon ovog pokušaja
-            if user.is_login_blocked():
-                remaining = (user.blocked_until - datetime.utcnow()).seconds
-                return jsonify(LoginResponseDTO(
-                    success=False,
-                    message='Previše neuspešnih pokušaja. Nalog blokiran na 1 minut.',
-                    access_token='',
-                    user=UserResponseDTO(**user.to_dict()),
-                    blocked=True,
-                    blocked_until=user.blocked_until.isoformat(),
-                    remaining_seconds=remaining
-                ).dict()), 429
-            else:
-                attempts_left = 3 - user.login_attempts
-                return jsonify(LoginResponseDTO(
-                    success=False,
-                    message=f'Pogrešan email ili lozinka. Preostalo pokušaja: {attempts_left}',
-                    access_token='',
-                    user=UserResponseDTO(**user.to_dict()),
-                    attempts_left=attempts_left
-                ).dict()), 401
+            # Proveri koliko pokušaja ima u novom sistemu
+            attempts_left = 2  # Default
+            try:
+                status_resp = requests.get(
+                    f'http://localhost:{Config.PORT}/api/auth/login-status/{email}',
+                    timeout=2
+                )
+                if status_resp.status_code == 200:
+                    status_data = status_resp.json()
+                    attempts_left = max(0, 2 - status_data.get('attempts', 0))
+            except:
+                pass
+            
+            return jsonify(LoginResponseDTO(
+                success=False,
+                message=f'Pogrešan email ili lozinka. Preostalo pokušaja: {attempts_left}',
+                access_token='',
+                user=UserResponseDTO(**user.to_dict()),
+                attempts_left=attempts_left
+            ).dict()), 401
         
-        #  USPESAN LOGIN
-        user.reset_login_attempts()
-        record_login_attempt(email, True)
-        db.session.commit()
-        
+        # 4. USPESAN LOGIN
         logger.info(f"Successful login for: {email}")
+        
+        # Resetuj sve pokušaje
+        report_successful_login(email)
+        report_successful_login(ip_address)
+        
+        # Resetuj u bazi
+        user.reset_login_attempts()
+        record_login_attempt(email, True, ip_address)
+        db.session.commit()
         
         # Generisanje tokena
         access_token, refresh_token = generate_tokens(user.id, user.role)
@@ -335,14 +441,21 @@ def login():
     except Exception as e:
         logger.error(f"Login error: {e}")
         return jsonify(ErrorResponseDTO(
-            error=str(e),
-            code='login_error'
-        ).dict()), 400
+            error='Greška pri prijavi',
+            code='login_error',
+            details=str(e) if Config.FLASK_DEBUG else None
+        ).dict()), 500
 
 @auth_bp.route('/refresh', methods=['POST'])
 def refresh_token():
     """Osvežavanje access tokena"""
     try:
+        if not request.is_json:
+            return jsonify(ErrorResponseDTO(
+                error='JSON data je obavezan',
+                code='json_required'
+            ).dict()), 400
+            
         refresh_token_value = request.json.get('refresh_token')
         
         if not refresh_token_value:
@@ -397,7 +510,8 @@ def refresh_token():
         new_access_token, new_refresh_token = generate_tokens(user.id, user.role)
         
         # Dodavanje starog refresh tokena u blacklist
-        add_to_blacklist(refresh_token_value, Config.JWT_REFRESH_TOKEN_EXPIRES)
+        if redis_client:
+            add_to_blacklist(refresh_token_value, Config.JWT_REFRESH_TOKEN_EXPIRES)
         
         # Kreiraj response DTO
         response = LoginResponseDTO(
@@ -413,8 +527,9 @@ def refresh_token():
     except Exception as e:
         logger.error(f"Refresh token error: {e}")
         return jsonify(ErrorResponseDTO(
-            error=str(e),
-            code='refresh_error'
+            error='Greška pri osvežavanju tokena',
+            code='refresh_error',
+            details=str(e) if Config.FLASK_DEBUG else None
         ).dict()), 500
 
 @auth_bp.route('/logout', methods=['POST'])
@@ -428,8 +543,9 @@ def logout(user_id):
             token = auth_header.split(' ')[1]
             
             # Dodaj token u blacklist (Redis keš)
-            expires_in = Config.JWT_ACCESS_TOKEN_EXPIRES
-            add_to_blacklist(token, expires_in)
+            if redis_client:
+                expires_in = Config.JWT_ACCESS_TOKEN_EXPIRES
+                add_to_blacklist(token, expires_in)
             
             logger.info(f"User {user_id} logged out")
             
@@ -446,7 +562,7 @@ def logout(user_id):
     except Exception as e:
         logger.error(f"Logout error: {e}")
         return jsonify(ErrorResponseDTO(
-            error=str(e),
+            error='Greška pri odjavi',
             code='logout_error'
         ).dict()), 500
 
@@ -467,15 +583,14 @@ def validate_token(user_id):
         'user': UserResponseDTO(**user.to_dict()).dict()
     }), 200
 
-@auth_bp.route('/failed-attempts', methods=['GET'])
-def get_failed_attempts():
-    """Debug endpoint za proveru neuspješnih pokušaja"""
-    # Ovo je samo za development, u produkciji obriši
-    result = {}
-    for ip_hash, info in failed_attempts.items():
-        result[ip_hash] = {
-            'count': info['count'],
-            'blocked_until': info['blocked_until'].isoformat() if info['blocked_until'] else None,
-            'is_blocked': info['blocked_until'] and info['blocked_until'] > datetime.utcnow()
-        }
-    return jsonify(result), 200
+@auth_bp.route('/rate-limit-status/<identifier>', methods=['GET'])
+def rate_limit_status(identifier):
+    """Public endpoint za proveru statusa rate limitinga"""
+    blocked, time_left = check_login_blocked(identifier)
+    
+    return jsonify({
+        'identifier': identifier,
+        'blocked': blocked,
+        'time_left_seconds': time_left,
+        'time_left_human': f"{time_left // 60}m {time_left % 60}s" if time_left > 0 else "0s"
+    }), 200

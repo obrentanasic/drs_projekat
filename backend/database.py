@@ -28,7 +28,6 @@ def init_redis():
         print(f" Redis connection failed: {e}")
         return False
 
-# MongoDB za DB2 (kvizovi - za kasnije)
 mongo_client = None
 mongo_db = None
 

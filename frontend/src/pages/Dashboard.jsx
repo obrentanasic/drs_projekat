@@ -20,7 +20,6 @@ import {
   ExitToApp as LogoutIcon,
   Refresh as RefreshIcon,
   AdminPanelSettings as AdminIcon,
-  AccessTime as TimeIcon,
   Verified as VerifiedIcon,
   Edit as EditIcon,
   LocationOn as LocationIcon,
@@ -36,7 +35,6 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [recentActivity, setRecentActivity] = useState([])
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -56,7 +54,7 @@ const Dashboard = () => {
       setLoading(true)
       setError('')
       
-      console.log('📊 Fetching dashboard data...')
+      console.log(' Fetching dashboard data...')
       
       if (isAdmin()) {
         try {
@@ -75,13 +73,6 @@ const Dashboard = () => {
           })
         }
       }
-      
-      // ✅ SIMULIRAJ NEDAVNU AKTIVNOST
-      setRecentActivity([
-        { id: 1, action: 'Logged in', timestamp: 'Just now', icon: '👤' },
-        { id: 2, action: 'Dashboard loaded', timestamp: 'Few seconds ago', icon: '📊' },
-        { id: 3, action: 'Session active', timestamp: 'Currently', icon: '✅' },
-      ])
       
     } catch (err) {
       console.error(' Dashboard error:', err)
@@ -445,45 +436,6 @@ const Dashboard = () => {
           </Grid>
         </Paper>
       )}
-
-      {/* RECENT ACTIVITY */}
-      <Paper sx={{ p: 4, borderRadius: 3, boxShadow: 2 }}>
-        <Box display="flex" alignItems="center" mb={3}>
-          <TimeIcon sx={{ mr: 2, fontSize: 40, color: 'primary.main' }} />
-          <Typography variant="h5" fontWeight="bold">
-            Recent Activity
-          </Typography>
-        </Box>
-        
-        <Divider sx={{ mb: 3 }} />
-        
-        <Grid container spacing={2}>
-          {recentActivity.map((activity) => (
-            <Grid item xs={12} key={activity.id}>
-              <Card sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <Typography variant="h5">{activity.icon}</Typography>
-                      <Box>
-                        <Typography variant="body1" fontWeight="medium">
-                          {activity.action}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {activity.timestamp}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Dashboard
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
       
       {/* FOOTER JE UKLONJEN */}
     </Container>
