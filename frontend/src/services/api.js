@@ -1,11 +1,11 @@
 import axios from 'axios';
 
-// Base URL - koristi iz .env fajla
+// Base URL 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 console.log('🔗 API URL configured:', API_URL);
 
-// Kreiraj axios instancu
+// Kreiranje axios instance
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -15,7 +15,7 @@ const api = axios.create({
   timeout: 30000, // 30 sekundi timeout
 });
 
-// ✅ Request interceptor - dodaje token
+//  Request interceptor - dodaje token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -29,7 +29,7 @@ api.interceptors.request.use(
   }
 );
 
-// ✅ Response interceptor - hvata greške
+//  Response interceptor - hvata greške
 api.interceptors.response.use(
   (response) => {
     return response;
@@ -53,59 +53,59 @@ api.interceptors.response.use(
     if (error.response?.status === 429) {
       const blockedUntil = error.response?.data?.blocked_until;
       const remaining = error.response?.data?.remaining_seconds;
-      console.warn(`⚠️ Account blocked until: ${blockedUntil}, remaining: ${remaining}s`);
+      console.warn(` Account blocked until: ${blockedUntil}, remaining: ${remaining}s`);
     }
     
     return Promise.reject(error);
   }
 );
 
-// ✅ AUTH API - PRILAGOĐENO TVOJEM BACKENDU
+// AUTH API 
 export const authAPI = {
-  // ✅ REGISTRACIJA - SVA POLJA IZ SPECIFIKACIJE
+  //  REGISTRACIJA 
   register: (userData) => api.post('/api/auth/register', userData),
   
-  // ✅ LOGIN - vraća access_token i refresh_token
+  //  LOGIN - vraća access_token i refresh_token
   login: (email, password) => api.post('/api/auth/login', { email, password }),
   
-  // ✅ LOGOUT
+  //  LOGOUT
   logout: () => api.post('/api/auth/logout'),
   
-  // ✅ REFRESH TOKEN
+  //  REFRESH TOKEN
   refreshToken: (refreshToken) => api.post('/api/auth/refresh', { refresh_token: refreshToken }),
   
-  // ✅ VALIDACIJA TOKENA
+  //  VALIDACIJA TOKENA
   validateToken: () => api.get('/api/auth/validate'),
   
-  // ✅ PROFIL KORISNIKA
+  //  PROFIL KORISNIKA
   getProfile: () => api.get('/api/profile')
 };
 
-// ✅ USER API - PRILAGOĐENO TVOJIM RUTAMA
+//  USER API
 export const userAPI = {
-  // ✅ SVI KORISNICI (samo admin) - sa paginacijom
+  //  SVI KORISNICI (samo admin) - sa paginacijom
   getAllUsers: (page = 1, perPage = 20, search = '') => 
     api.get(`/api/users?page=${page}&per_page=${perPage}&search=${search}`),
   
-  // ✅ PROMENA ULOGE (samo admin)
+  //  PROMENA ULOGE (samo admin)
   updateUserRole: (userId, role) => api.put(`/api/users/${userId}/role`, { role }),
   
-  // ✅ BRIŠI KORISNIKA (samo admin)
+  //  BRIŠI KORISNIKA (samo admin)
   deleteUser: (userId) => api.delete(`/api/users/${userId}`),
   
-  // ✅ BLOKIRAJ KORISNIKA (samo admin)
+  //  BLOKIRAJ KORISNIKA (samo admin)
   blockUser: (userId, hours = 24) => api.put(`/api/users/${userId}/block`, { block: true, hours }),
   
-  // ✅ ODBLOKIRAJ KORISNIKA (samo admin)
+  //  ODBLOKIRAJ KORISNIKA (samo admin)
   unblockUser: (userId) => api.put(`/api/users/${userId}/block`, { block: false }),
   
-  // ✅ STATISTIKA KORISNIKA (samo admin)
+  //  STATISTIKA KORISNIKA (samo admin)
   getUserStats: () => api.get('/api/users/stats'),
   
-  // ✅ UPDATE PROFILA
+  //  UPDATE PROFILA
   updateProfile: (userData) => api.put('/api/profile', userData),
   
-  // ✅ UPLOAD PROFILNE SLIKE
+  //  UPLOAD PROFILNE SLIKE
   uploadProfileImage: (formData) => 
     api.post('/api/profile/upload-image', formData, {
       headers: {
@@ -114,22 +114,22 @@ export const userAPI = {
     })
 };
 
-// ✅ DASHBOARD API
+//  DASHBOARD API
 export const dashboardAPI = {
   getStats: () => api.get('/api/users/stats'), // Koristi postojeći endpoint
-  getQuizzes: () => api.get('/quizzes') // Ovo će biti kad implementiraš kvizove
+  getQuizzes: () => api.get('/quizzes') 
 };
 
-// ✅ TOKEN HELPER FUNKCIJE - ISPRAVLJENE
+//  TOKEN HELPER FUNKCIJE 
 export const tokenHelper = {
-  // ✅ ČUVANJE TOKENA (kao što backend vraća)
+  //  ČUVANJE TOKENA (kao što backend vraća)
   saveTokens: (accessToken, refreshToken, user) => {
     localStorage.setItem('access_token', accessToken);
     localStorage.setItem('refresh_token', refreshToken);
     localStorage.setItem('user', JSON.stringify(user));
   },
   
-  // ✅ DOBAVLJANJE TOKENA
+  //  DOBAVLJANJE TOKENA
   getAccessToken: () => localStorage.getItem('access_token'),
   getRefreshToken: () => localStorage.getItem('refresh_token'),
   getUser: () => {
@@ -137,14 +137,14 @@ export const tokenHelper = {
     return userStr ? JSON.parse(userStr) : null;
   },
   
-  // ✅ ČIŠĆENJE TOKENA
+  //  ČIŠĆENJE TOKENA
   clearTokens: () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
   },
   
-  // ✅ PROVERA VALIDNOSTI TOKENA
+  //  PROVERA VALIDNOSTI TOKENA
   isValidToken: (token) => {
     if (!token) return false;
     
@@ -162,7 +162,7 @@ export const tokenHelper = {
     }
   },
   
-  // ✅ DEKODIRANJE TOKENA (za dobijanje user_id i role)
+  //  DEKODIRANJE TOKENA (za dobijanje user_id i role)
   decodeToken: (token) => {
     try {
       if (!token || typeof token !== 'string') return null;
@@ -186,25 +186,25 @@ export const tokenHelper = {
     }
   },
   
-  // ✅ DOBAVI PAYLOAD IZ TRENUTNOG TOKENA
+  //  DOBAVI PAYLOAD IZ TRENUTNOG TOKENA
   getTokenPayload: () => {
     const token = localStorage.getItem('access_token');
     return tokenHelper.decodeToken(token);
   },
   
-  // ✅ PROVERI DA LI JE KORISNIK ADMIN
+  //  PROVERI DA LI JE KORISNIK ADMIN
   isAdmin: () => {
     const user = tokenHelper.getUser();
     return user && user.role === 'ADMINISTRATOR';
   },
   
-  // ✅ PROVERI DA LI JE KORISNIK MODERATOR
+  //  PROVERI DA LI JE KORISNIK MODERATOR
   isModerator: () => {
     const user = tokenHelper.getUser();
     return user && (user.role === 'MODERATOR' || user.role === 'ADMINISTRATOR');
   },
   
-  // ✅ PROVERI DA LI JE KORISNIK IGRAČ
+  //  PROVERI DA LI JE KORISNIK IGRAČ
   isPlayer: () => {
     const user = tokenHelper.getUser();
     return user && user.role === 'IGRAČ';

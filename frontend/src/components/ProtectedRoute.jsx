@@ -7,7 +7,7 @@ const ProtectedRoute = ({ children, requiredRole }) => {
   const { user, isAuthenticated, isLoading } = useAuth()
   const location = useLocation()
 
-  console.log('🔒 ProtectedRoute state:', {
+  console.log(' ProtectedRoute state:', {
     isAuthenticated,
     isLoading,
     user: user?.email,

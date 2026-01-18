@@ -641,7 +641,7 @@ const Profile = () => {
         </Grid>
       </Grid>
       
-      {/* FOOTER JE UKLONJEN */}
+      {/*  */}
     </Container>
   )
 }

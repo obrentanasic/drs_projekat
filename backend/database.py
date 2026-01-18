@@ -10,7 +10,7 @@ def init_postgres(app):
     db.init_app(app)
     with app.app_context():
         db.create_all()
-        print("✅ PostgreSQL database initialized")
+        print(" PostgreSQL database initialized")
 
 # Redis za keš i WebSocket 
 redis_client = None
@@ -36,4 +36,4 @@ def init_mongo():
     global mongo_client, mongo_db
     mongo_client = MongoClient('mongodb://localhost:27017/')
     mongo_db = mongo_client['quiz_database']
-    print("✅ MongoDB initialized (for quiz service)")
+    print(" MongoDB initialized (for quiz service)")

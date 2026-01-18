@@ -17,13 +17,13 @@ class WebSocketService {
       const token = localStorage.getItem('access_token')
       
       if (!token) {
-        console.warn('⚠️ No token available for WebSocket connection')
+        console.warn(' No token available for WebSocket connection')
         return false
       }
 
       // Ako je već konektovan, ne konektuj ponovo
       if (this.socket?.connected) {
-        console.log('✅ WebSocket already connected')
+        console.log(' WebSocket already connected')
         return true
       }
 
@@ -41,14 +41,14 @@ class WebSocketService {
 
       // Event handlers
       this.socket.on('connect', () => {
-        console.log('✅ WebSocket connected, ID:', this.socket.id)
+        console.log(' WebSocket connected, ID:', this.socket.id)
         this.connected = true
         this.reconnectAttempts = 0
         this.emitEvent('connected', { socketId: this.socket.id })
       })
 
       this.socket.on('disconnect', (reason) => {
-        console.log('🔌 WebSocket disconnected:', reason)
+        console.log(' WebSocket disconnected:', reason)
         this.connected = false
         
         if (reason === 'io server disconnect') {
@@ -58,67 +58,67 @@ class WebSocketService {
       })
 
       this.socket.on('connect_error', (error) => {
-        console.error('❌ WebSocket connection error:', error.message)
+        console.error(' WebSocket connection error:', error.message)
         this.connected = false
         this.reconnectAttempts++
         
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          console.error('💥 Max reconnection attempts reached')
+          console.error(' Max reconnection attempts reached')
         }
       })
 
       this.socket.on('reconnect', (attemptNumber) => {
-        console.log(`🔄 WebSocket reconnected after ${attemptNumber} attempts`)
+        console.log(` WebSocket reconnected after ${attemptNumber} attempts`)
         this.connected = true
       })
 
       this.socket.on('reconnect_attempt', (attemptNumber) => {
-        console.log(`🔄 WebSocket reconnection attempt ${attemptNumber}`)
+        console.log(` WebSocket reconnection attempt ${attemptNumber}`)
       })
 
       this.socket.on('reconnect_error', (error) => {
-        console.error('❌ WebSocket reconnection error:', error)
+        console.error(' WebSocket reconnection error:', error)
       })
 
       this.socket.on('reconnect_failed', () => {
-        console.error('💥 WebSocket reconnection failed')
+        console.error(' WebSocket reconnection failed')
       })
 
       // Backend event-i
       this.socket.on('new_quiz_pending', (data) => {
-        console.log('📝 New quiz pending approval:', data)
+        console.log(' New quiz pending approval:', data)
         this.emitEvent('new_quiz_pending', data)
       })
 
       this.socket.on('quiz_approved', (data) => {
-        console.log('✅ Quiz approved:', data)
+        console.log(' Quiz approved:', data)
         this.emitEvent('quiz_approved', data)
       })
 
       this.socket.on('quiz_rejected', (data) => {
-        console.log('❌ Quiz rejected:', data)
+        console.log(' Quiz rejected:', data)
         this.emitEvent('quiz_rejected', data)
       })
 
       this.socket.on('admin_notification', (data) => {
-        console.log('👑 Admin notification:', data)
+        console.log(' Admin notification:', data)
         this.emitEvent('admin_notification', data)
       })
 
       this.socket.on('system_message', (data) => {
-        console.log('📢 System message:', data)
+        console.log(' System message:', data)
         this.emitEvent('system_message', data)
       })
 
       this.socket.on('error', (error) => {
-        console.error('❌ WebSocket error:', error)
+        console.error(' WebSocket error:', error)
         this.emitEvent('error', error)
       })
 
       return true
 
     } catch (error) {
-      console.error('💥 WebSocket initialization error:', error)
+      console.error(' WebSocket initialization error:', error)
       return false
     }
   }
@@ -131,7 +131,7 @@ class WebSocketService {
       this.socket.disconnect()
       this.socket = null
       this.connected = false
-      console.log('🔌 WebSocket manually disconnected')
+      console.log(' WebSocket manually disconnected')
     }
   }
 
@@ -142,7 +142,7 @@ class WebSocketService {
     if (this.socket && this.connected) {
       this.socket.emit(event, data)
     } else {
-      console.warn('⚠️ Cannot emit, WebSocket not connected')
+      console.warn(' Cannot emit, WebSocket not connected')
     }
   }
 
@@ -184,7 +184,7 @@ class WebSocketService {
   joinQuizRoom(quizId) {
     if (this.socket && this.connected) {
       this.socket.emit('join_quiz_room', { quiz_id: quizId })
-      console.log(`🎮 Joined quiz room: ${quizId}`)
+      console.log(` Joined quiz room: ${quizId}`)
     }
   }
 
@@ -194,7 +194,7 @@ class WebSocketService {
   leaveQuizRoom(quizId) {
     if (this.socket && this.connected) {
       this.socket.emit('leave_quiz_room', { quiz_id: quizId })
-      console.log(`🚪 Left quiz room: ${quizId}`)
+      console.log(` Left quiz room: ${quizId}`)
     }
   }
 

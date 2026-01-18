@@ -1,7 +1,6 @@
-// frontend/src/services/auth.js
 import { authAPI } from './Api.js';
 
-// ✅ TOKEN HELPER FUNKCIJE
+//  TOKEN HELPER FUNKCIJE
 export const tokenHelper = {
   saveTokens: (accessToken, refreshToken, user) => {
     localStorage.setItem('access_token', accessToken);
@@ -37,45 +36,45 @@ export const tokenHelper = {
       const exp = payload.exp * 1000;
       const isValid = Date.now() < exp;
       
-      console.log(`🔍 Token expires: ${new Date(exp).toLocaleString()}, valid: ${isValid}`);
+      console.log(` Token expires: ${new Date(exp).toLocaleString()}, valid: ${isValid}`);
       return isValid;
       
     } catch (error) {
-      console.error('❌ Error validating token:', error);
+      console.error(' Error validating token:', error);
       return false;
     }
   }
 };
 
-// ✅ SERVIS ZA AUTENTIFIKACIJU - ISPRAVLJEN
+//  SERVIS ZA AUTENTIFIKACIJU 
 export const authService = {
-  // ✅ VALIDACIJA TOKENA
+  //  VALIDACIJA TOKENA
   validateToken: async (token) => {
     try {
       if (!token) return false;
       return tokenHelper.isValidToken(token);
     } catch (error) {
-      console.error('❌ Token validation error:', error);
+      console.error(' Token validation error:', error);
       return false;
     }
   },
   
-  // ✅ LOGIN - ISPRAVLJEN FORMAT
+  //  LOGIN 
   login: async (email, password) => {
     try {
-      console.log('🔐 Login attempt:', email);
+      console.log(' Login attempt:', email);
       
       const response = await authAPI.login(email, password);
       const data = response.data;
       
-      console.log('📥 Login API response:', data);
+      console.log(' Login API response:', data);
       
-      // BITNO: Provjeri različite formate responsa
+      // Provjeri različite formate responsa
       if (data.access_token) {
         // Sačuvaj tokene
         tokenHelper.saveTokens(data.access_token, data.refresh_token, data.user);
         
-        console.log('✅ Login successful, tokens saved');
+        console.log(' Login successful, tokens saved');
         return {
           success: true,
           user: data.user,
@@ -124,7 +123,7 @@ export const authService = {
       }
       
     } catch (error) {
-      console.error('❌ Login API error:', error);
+      console.error(' Login API error:', error);
       
       const errorData = error.response?.data || {};
       return {
@@ -138,15 +137,15 @@ export const authService = {
     }
   },
   
-  // ✅ REGISTRACIJA
+  //  REGISTRACIJA
   register: async (userData) => {
     try {
-      console.log('📝 Registration attempt:', userData.email);
+      console.log(' Registration attempt:', userData.email);
       
       const response = await authAPI.register(userData);
       const data = response.data;
       
-      console.log('📥 Registration response:', data);
+      console.log(' Registration response:', data);
       
       if (data.access_token && data.user) {
         tokenHelper.saveTokens(data.access_token, data.refresh_token, data.user);
@@ -164,7 +163,7 @@ export const authService = {
       }
       
     } catch (error) {
-      console.error('❌ Registration API error:', error);
+      console.error(' Registration API error:', error);
       
       const errorData = error.response?.data || {};
       return {
@@ -174,7 +173,7 @@ export const authService = {
     }
   },
   
-  // ✅ LOGOUT
+  //  LOGOUT
   logout: async () => {
     try {
       console.log('🚪 Logout attempt');
@@ -190,7 +189,7 @@ export const authService = {
       };
       
     } catch (error) {
-      console.error('❌ Logout error:', error);
+      console.error(' Logout error:', error);
       
       // U svakom slučaju očisti tokene
       tokenHelper.clearTokens();
@@ -202,16 +201,16 @@ export const authService = {
     }
   },
   
-  // ✅ DOBAVI TRENUTNOG KORISNIKA
+  //  DOBAVI TRENUTNOG KORISNIKA
   getCurrentUser: () => tokenHelper.getUser(),
   
-  // ✅ PROVERA AUTENTIFIKACIJE
+  //  PROVJERA AUTENTIFIKACIJE
   isAuthenticated: () => {
     const token = tokenHelper.getAccessToken();
     return token && tokenHelper.isValidToken(token);
   },
   
-  // ✅ REFRESH TOKEN (ako postoji endpoint)
+  //  REFRESH TOKEN (ako postoji endpoint)
   refreshToken: async () => {
     try {
       const refreshToken = tokenHelper.getRefreshToken();
@@ -229,7 +228,7 @@ export const authService = {
       return { success: false, error: data.message };
       
     } catch (error) {
-      console.error('❌ Refresh token error:', error);
+      console.error(' Refresh token error:', error);
       return { success: false, error: error.message };
     }
   }

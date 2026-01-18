@@ -14,7 +14,6 @@ from models import User, db, ROLE_PLAYER, ROLE_MODERATOR, ROLE_ADMIN
 from auth import token_required, role_required
 from config import Config
 
-# ✅ DODAJ IMPORT EMAIL SERVISA:
 try:
     from email_service import email_service
     logger = logging.getLogger(__name__)
@@ -262,7 +261,7 @@ def change_user_role(user_id, target_user_id):
         
         target_user.role = data.role
         
-        # Ako postaje admin, odblokiraj (opciono)
+        # Ako postaje admin, odblokiraj 
         if data.role == ROLE_ADMIN:
             target_user.is_blocked = False
             target_user.blocked_until = None
@@ -271,9 +270,8 @@ def change_user_role(user_id, target_user_id):
         
         logger.info(f"Admin {user_id} changed role for user {target_user.email} from {old_role} to {data.role}")
         
-        # ✅ ✅ ✅ DODAJ OVAJ KOD ZA SLANJE EMAILA:
         try:
-            logger.info(f"🔄 Attempting to send role change email to {target_user.email}")
+            logger.info(f" Attempting to send role change email to {target_user.email}")
             success = email_service.send_role_change_email(
                 to_email=target_user.email,
                 first_name=target_user.first_name,
@@ -281,11 +279,11 @@ def change_user_role(user_id, target_user_id):
                 new_role=data.role
             )
             if success:
-                logger.info(f"✅ Role change email SENT to {target_user.email}")
+                logger.info(f" Role change email SENT to {target_user.email}")
             else:
-                logger.warning(f"⚠️ Role change email might not have been sent to {target_user.email}")
+                logger.warning(f" Role change email might not have been sent to {target_user.email}")
         except Exception as email_error:
-            logger.error(f"❌ Failed to send role change email to {target_user.email}: {email_error}")
+            logger.error(f" Failed to send role change email to {target_user.email}: {email_error}")
             # Ne vraća grešku - samo loguj
         
         return jsonify({

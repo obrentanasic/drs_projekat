@@ -75,7 +75,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 },
               },
               loading: {
-                duration: Infinity, // Ostaje dok se ne riješi
+                duration: Infinity, 
                 style: {
                   background: '#1976d2',
                 },
@@ -88,7 +88,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         </LocalizationProvider>
       </BrowserRouter>
       
-      {/* React Query Devtools (samo u development modu) */}
+      {/* React Query Devtools  */}
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   </React.StrictMode>
