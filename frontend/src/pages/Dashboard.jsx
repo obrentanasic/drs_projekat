@@ -28,7 +28,7 @@ import {
 } from '@mui/icons-material'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { userAPI } from '../services/Api'
+import { userAPI } from '../services/api'
 
 const Dashboard = () => {
   const { user, isAuthenticated, logout, isAdmin, isModerator } = useAuth()
@@ -108,6 +108,15 @@ const Dashboard = () => {
   const handleProfile = () => {
     navigate('/profile')
   }
+
+ const handleBrowseQuizzes = () => {
+    navigate('/quizzes')
+  }
+
+  const handleCreateQuiz = () => {
+    navigate('/create-quiz')
+  }
+
 
   if (loading) {
     return (
@@ -204,6 +213,36 @@ const Dashboard = () => {
               My Profile
             </Button>
             
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleBrowseQuizzes}
+              startIcon={<EditIcon />}
+              sx={{ 
+                fontWeight: 'bold',
+                borderRadius: 2,
+                px: 3
+              }}
+            >
+              Browse Quizzes
+            </Button>
+
+            {isModerator() && (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleCreateQuiz}
+                startIcon={<EditIcon />}
+                sx={{ 
+                  fontWeight: 'bold',
+                  borderRadius: 2,
+                  px: 3
+                }}
+              >
+                Create Quiz
+              </Button>
+            )}
+
             <Button
               variant="contained"
               color="error"
