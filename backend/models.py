@@ -13,6 +13,11 @@ ROLE_ADMIN = 'ADMINISTRATOR'
 
 VALID_ROLES = [ROLE_PLAYER, ROLE_MODERATOR, ROLE_ADMIN]
 
+QUIZ_STATUS_PENDING = 'PENDING'
+QUIZ_STATUS_APPROVED = 'APPROVED'
+QUIZ_STATUS_REJECTED = 'REJECTED'
+VALID_QUIZ_STATUSES = [QUIZ_STATUS_PENDING, QUIZ_STATUS_APPROVED, QUIZ_STATUS_REJECTED]
+
 class User(db.Model):
     __tablename__ = 'users'
     
@@ -273,6 +278,96 @@ class FailedLoginCounter(db.Model):
     def __repr__(self):
         return f'<FailedLoginCounter {self.identifier}: {self.attempts} attempts>'
 
+class Quiz(db.Model):
+    __tablename__ = 'quizzes'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    author_name = db.Column(db.String(120), nullable=False)
+    duration_seconds = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), default=QUIZ_STATUS_PENDING, nullable=False, index=True)
+    rejection_reason = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    questions = db.relationship(
+        'QuizQuestion',
+        backref='quiz',
+        cascade='all, delete-orphan',
+        order_by='QuizQuestion.order'
+    )
+    
+    def to_summary_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'author_id': self.author_id,
+            'author_name': self.author_name,
+            'duration_seconds': self.duration_seconds,
+            'status': self.status,
+            'rejection_reason': self.rejection_reason,
+            'question_count': len(self.questions),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def to_dict(self, include_questions=False, include_answers=False):
+        data = self.to_summary_dict()
+        if include_questions:
+            data['questions'] = [
+                question.to_dict(include_answers=include_answers)
+                for question in self.questions
+            ]
+        return data
+
+class QuizQuestion(db.Model):
+    __tablename__ = 'quiz_questions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quizzes.id'), nullable=False, index=True)
+    text = db.Column(db.Text, nullable=False)
+    points = db.Column(db.Integer, nullable=False)
+    order = db.Column(db.Integer, nullable=False, default=0)
+    
+    answers = db.relationship(
+        'QuizAnswer',
+        backref='question',
+        cascade='all, delete-orphan',
+        order_by='QuizAnswer.order'
+    )
+    
+    def to_dict(self, include_answers=False):
+        data = {
+            'id': self.id,
+            'quiz_id': self.quiz_id,
+            'text': self.text,
+            'points': self.points,
+            'order': self.order
+        }
+        if include_answers:
+            data['answers'] = [answer.to_dict() for answer in self.answers]
+        return data
+
+class QuizAnswer(db.Model):
+    __tablename__ = 'quiz_answers'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey('quiz_questions.id'), nullable=False, index=True)
+    text = db.Column(db.Text, nullable=False)
+    is_correct = db.Column(db.Boolean, default=False, nullable=False)
+    order = db.Column(db.Integer, nullable=False, default=0)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'question_id': self.question_id,
+            'text': self.text,
+            'is_correct': self.is_correct,
+            'order': self.order
+        }
+
+
 # Funkcija za kreiranje default admina
 def create_default_admin():
     """Kreiranje default admin korisnika ako ne postoji (po specifikaciji)"""
@@ -307,6 +402,40 @@ def create_default_admin():
     
     print(f"ℹ️ Admin already exists: {admin_email}")
     return admin
+
+def create_default_moderator():
+    """Kreiranje default moderator korisnika ako ne postoji (po specifikaciji)"""
+    
+    moderator_email = 'moderator@quizplatform.com'
+    moderator = User.query.filter_by(email=moderator_email).first()
+    
+    if not moderator:
+        moderator = User(
+            first_name='Moderator',
+            last_name='User',
+            email=moderator_email,
+            date_of_birth=datetime(1995, 5, 15).date(),
+            gender='Muški',
+            role=ROLE_MODERATOR,
+            country='Serbia',
+            street='Moderator Street',
+            number='1'
+        )
+        
+        try:
+            moderator.set_password('Moderator123!')  # Koristi set_password za validaciju
+            db.session.add(moderator)
+            db.session.commit()
+            print(f"✅ Default moderator created: {moderator_email}")
+            print("   Password: Moderator123! (change in production!)")
+            return moderator
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error creating moderator: {e}")
+            raise
+    
+    print(f"ℹ️ Moderator already exists: {moderator_email}")
+    return moderator
 
 # Helper funkcije za rate limiting
 def get_failed_login_counter(identifier, create_if_missing=True):

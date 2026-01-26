@@ -207,3 +207,98 @@ class TokenResponseDTO(BaseModel):
     
     class Config:
         extra = 'forbid'
+    
+    # ==================== QUIZ DTOs ====================
+
+class QuizAnswerDTO(BaseModel):
+    text: str = Field(..., min_length=1, max_length=200)
+    is_correct: bool
+    
+    @validator('text')
+    def validate_text(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Odgovor ne može biti prazan')
+        return v.strip()
+    
+    class Config:
+        extra = 'forbid'
+
+class QuizQuestionDTO(BaseModel):
+    text: str = Field(..., min_length=5, max_length=500)
+    points: int = Field(..., ge=1, le=1000)
+    answers: List[QuizAnswerDTO]
+    
+    @validator('text')
+    def validate_text(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Pitanje ne može biti prazno')
+        return v.strip()
+    
+    @validator('answers')
+    def validate_answers(cls, v):
+        if len(v) < 2:
+            raise ValueError('Pitanje mora imati najmanje 2 ponuđena odgovora')
+        if not any(answer.is_correct for answer in v):
+            raise ValueError('Pitanje mora imati bar jedan tačan odgovor')
+        return v
+    
+    class Config:
+        extra = 'forbid'
+
+class QuizCreateDTO(BaseModel):
+    title: str = Field(..., min_length=3, max_length=120)
+    duration_seconds: int = Field(..., ge=5, le=3600)
+    questions: List[QuizQuestionDTO]
+    
+    @validator('title')
+    def validate_title(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Naziv kviza je obavezan')
+        return v.strip()
+    
+    @validator('questions')
+    def validate_questions(cls, v):
+        if len(v) < 1:
+            raise ValueError('Kviz mora imati najmanje jedno pitanje')
+        return v
+    
+    class Config:
+        extra = 'forbid'
+
+class QuizUpdateDTO(QuizCreateDTO):
+    pass
+
+class QuizAnswerResponseDTO(BaseModel):
+    id: int
+    text: str
+    is_correct: bool
+    order: int
+    
+    class Config:
+        extra = 'ignore'
+
+class QuizQuestionResponseDTO(BaseModel):
+    id: int
+    text: str
+    points: int
+    order: int
+    answers: List[QuizAnswerResponseDTO]
+    
+    class Config:
+        extra = 'ignore'
+
+class QuizResponseDTO(BaseModel):
+    id: int
+    title: str
+    author_id: int
+    author_name: str
+    duration_seconds: int
+    status: str
+    rejection_reason: Optional[str] = None
+    question_count: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    questions: Optional[List[QuizQuestionResponseDTO]] = None
+    
+    class Config:
+        extra = 'ignore'
