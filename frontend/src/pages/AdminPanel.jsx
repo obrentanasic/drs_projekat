@@ -53,7 +53,8 @@ import {
 } from '@mui/icons-material'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { userAPI } from '../services/Api'
+import { userAPI, quizAPI } from '../services/api'
+import websocketService from '../services/websocket'
 import { toast } from 'react-hot-toast'
 
 const AdminPanel = () => {
@@ -78,6 +79,15 @@ const AdminPanel = () => {
   const [roleFilter, setRoleFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   
+// Quiz moderation
+  const [pendingQuizzes, setPendingQuizzes] = useState([])
+  const [quizLoading, setQuizLoading] = useState(false)
+  const [quizError, setQuizError] = useState('')
+  const [rejectDialog, setRejectDialog] = useState(false)
+  const [selectedQuiz, setSelectedQuiz] = useState(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [quizActionLoading, setQuizActionLoading] = useState(false)
+
   // Dialogs
   const [changeRoleDialog, setChangeRoleDialog] = useState(false)
   const [blockDialog, setBlockDialog] = useState(false)
@@ -103,6 +113,31 @@ const AdminPanel = () => {
     fetchData()
   }, [user, isAdmin, navigate, page, rowsPerPage, search, roleFilter, statusFilter])
 
+  useEffect(() => {
+    websocketService.connect()
+    const handleNewQuiz = (payload) => {
+      if (payload?.status === 'PENDING') {
+        setPendingQuizzes((prev) => {
+          const exists = prev.some((quiz) => quiz.id === payload.id)
+          return exists ? prev : [payload, ...prev]
+        })
+      }
+    }
+    const handleQuizDecision = (payload) => {
+      if (payload?.id) {
+        setPendingQuizzes((prev) => prev.filter((quiz) => quiz.id !== payload.id))
+      }
+    }
+    websocketService.on('new_quiz_pending', handleNewQuiz)
+    websocketService.on('quiz_approved', handleQuizDecision)
+    websocketService.on('quiz_rejected', handleQuizDecision)
+    return () => {
+      websocketService.off('new_quiz_pending', handleNewQuiz)
+      websocketService.off('quiz_approved', handleQuizDecision)
+      websocketService.off('quiz_rejected', handleQuizDecision)
+    }
+  }, [])
+
   const fetchData = async () => {
     try {
       setLoading(true)
@@ -122,6 +157,8 @@ const AdminPanel = () => {
       // Fetch statistics
       const statsResponse = await userAPI.getUserStats()
       setStats(statsResponse.data)
+
+      await fetchPendingQuizzes()
       
     } catch (err) {
       console.error(' AdminPanel error:', err)
@@ -131,6 +168,61 @@ const AdminPanel = () => {
       setLoading(false)
     }
   }
+
+   const fetchPendingQuizzes = async () => {
+    try {
+      setQuizLoading(true)
+      setQuizError('')
+      const response = await quizAPI.getQuizzes('PENDING')
+      setPendingQuizzes(response.data.quizzes || [])
+    } catch (err) {
+      console.error(' Failed to load pending quizzes:', err)
+      setQuizError(err.response?.data?.error || 'Failed to load pending quizzes')
+    } finally {
+      setQuizLoading(false)
+    }
+  }
+
+  const handleApproveQuiz = async (quizId) => {
+    try {
+      setQuizActionLoading(true)
+      await quizAPI.approveQuiz(quizId)
+      toast.success('Quiz approved')
+      setPendingQuizzes((prev) => prev.filter((quiz) => quiz.id !== quizId))
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to approve quiz')
+    } finally {
+      setQuizActionLoading(false)
+    }
+  }
+
+  const handleOpenReject = (quiz) => {
+    setSelectedQuiz(quiz)
+    setRejectionReason('')
+    setRejectDialog(true)
+  }
+
+  const handleRejectQuiz = async () => {
+    if (!selectedQuiz) return
+    if (!rejectionReason.trim()) {
+      toast.error('Rejection reason is required')
+      return
+    }
+    try {
+      setQuizActionLoading(true)
+      await quizAPI.rejectQuiz(selectedQuiz.id, rejectionReason)
+      toast.success('Quiz rejected')
+      setPendingQuizzes((prev) => prev.filter((quiz) => quiz.id !== selectedQuiz.id))
+      setRejectDialog(false)
+      setSelectedQuiz(null)
+      setRejectionReason('')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to reject quiz')
+    } finally {
+      setQuizActionLoading(false)
+    }
+  }
+
 
   const handleChangeRole = async () => {
     if (!selectedUser || !newRole) return
@@ -424,6 +516,86 @@ const AdminPanel = () => {
           </Grid>
         </Paper>
       )}
+
+      {/* QUIZ MODERATION */}
+      <Paper sx={{ p: 4, mb: 6, borderRadius: 3, boxShadow: 2 }}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} mb={3} flexWrap="wrap">
+          <Box display="flex" alignItems="center" gap={2}>
+            <CheckIcon sx={{ fontSize: 36, color: 'success.main' }} />
+            <Typography variant="h4" fontWeight="bold">
+              Pending Quizzes
+            </Typography>
+          </Box>
+          <Button variant="outlined" onClick={fetchPendingQuizzes} startIcon={<RefreshIcon />}>
+            Refresh
+          </Button>
+        </Box>
+
+        {quizError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {quizError}
+          </Alert>
+        )}
+
+        {quizLoading ? (
+          <Box display="flex" justifyContent="center" py={4}>
+            <CircularProgress />
+          </Box>
+        ) : pendingQuizzes.length === 0 ? (
+          <Alert severity="info">No quizzes awaiting approval.</Alert>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Quiz</TableCell>
+                  <TableCell>Author</TableCell>
+                  <TableCell>Duration</TableCell>
+                  <TableCell>Questions</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pendingQuizzes.map((quiz) => (
+                  <TableRow key={quiz.id}>
+                    <TableCell>
+                      <Typography fontWeight="bold">{quiz.title}</Typography>
+                    </TableCell>
+                    <TableCell>{quiz.author_name}</TableCell>
+                    <TableCell>{quiz.duration_seconds}s</TableCell>
+                    <TableCell>{quiz.question_count}</TableCell>
+                    <TableCell align="right">
+                      <Box display="flex" justifyContent="flex-end" gap={1}>
+                        <Button
+                          variant="contained"
+                          color="success"
+                          size="small"
+                          startIcon={<CheckIcon />}
+                          onClick={() => handleApproveQuiz(quiz.id)}
+                          disabled={quizActionLoading}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          startIcon={<ErrorIcon />}
+                          onClick={() => handleOpenReject(quiz)}
+                          disabled={quizActionLoading}
+                        >
+                          Reject
+                        </Button>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
 
       {/* USER MANAGEMENT */}
       <Paper sx={{ p: 4, borderRadius: 3, boxShadow: 2 }}>
@@ -817,6 +989,41 @@ const AdminPanel = () => {
             disabled={selectedUser?.id === user?.id}
           >
             Delete User
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* REJECT QUIZ DIALOG */}
+      <Dialog open={rejectDialog} onClose={() => setRejectDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={2}>
+            <WarningIcon color="error" />
+            Reject Quiz
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Provide a reason for rejection. The quiz will be sent back to the moderator for edits.
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            label="Rejection reason"
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRejectDialog(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleRejectQuiz}
+            disabled={quizActionLoading}
+          >
+            Reject Quiz
           </Button>
         </DialogActions>
       </Dialog>
