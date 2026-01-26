@@ -1,6 +1,8 @@
+import token
 from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
+from flask_socketio import emit, join_room, leave_room
 from flask_jwt_extended import JWTManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -11,12 +13,15 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 import redis
+import jwt
 import logging
 
 from config import Config
-from models import db, User, create_default_admin
+from models import db, User, create_default_admin, ROLE_ADMIN, ROLE_MODERATOR
+from extensions import socketio
 from auth import auth_bp
 from routes_users import users_bp
+from routes_quiz import quiz_bp
 
 load_dotenv()
 
@@ -34,13 +39,13 @@ CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True)
 # JWT
 jwt = JWTManager(app)
 
-socketio = SocketIO(
+socketio.init_app(
     app, 
     cors_allowed_origins=Config.CORS_ORIGINS,
     logger=False,
     engineio_logger=False,
-    async_mode='threading'  
-)
+    async_mode='threading'
+    )
 
 # Database
 db.init_app(app)
@@ -336,6 +341,7 @@ else:
 # Registracija blueprint-ova
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(users_bp, url_prefix='/api')
+app.register_blueprint(quiz_bp, url_prefix='/api')
 
 # Ruta za profilne slike
 @app.route('/uploads/profile-pictures/<filename>')
@@ -415,15 +421,76 @@ def api_docs():
 # WebSocket event handlers
 @socketio.on('connect')
 def handle_connect():
-    logger.info(f'WebSocket client connected: {request.sid}')
+    token = request.args.get('token')
+    if not token:
+        emit('error', {'message': 'Authentication required'})
+        return False
+    
+    try:
+        data = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=['HS256'])
+        request.user_id = data['user_id']
+        request.user_role = data.get('role', 'IGRAČ')
+    except jwt.ExpiredSignatureError:
+        emit('error', {'message': 'Token expired'})
+        return False
+    except jwt.InvalidTokenError:
+        emit('error', {'message': 'Invalid token'})
+        return False
+    
+    if request.user_role == ROLE_ADMIN:
+        join_room('admin_room')
+        emit('admin_connected', {
+            'user_id': request.user_id,
+            'message': 'Admin room joined',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    
+    logger.info(f'WebSocket client connected: {request.sid} ({request.user_role})')
     emit('system_message', {
         'message': 'Connected to Quiz Platform',
+        'role': request.user_role,
         'timestamp': datetime.now().isoformat()
     })
 
 @socketio.on('disconnect')
 def handle_disconnect():
     logger.info(f'WebSocket client disconnected: {request.sid}')
+
+@socketio.on('admin_notification')
+def handle_admin_notification(data):
+    if request.user_role not in [ROLE_MODERATOR, ROLE_ADMIN]:
+        emit('error', {'message': 'Insufficient permissions'})
+        return
+    
+    message = (data or {}).get('message', '')
+    notification_type = (data or {}).get('type', 'info')
+    
+    emit('admin_notification', {
+        'message': message,
+        'type': notification_type,
+        'from_user_id': request.user_id,
+        'timestamp': datetime.utcnow().isoformat()
+    }, room='admin_room')
+
+@socketio.on('join_quiz_room')
+def handle_join_quiz_room(data):
+    quiz_id = (data or {}).get('quiz_id')
+    if quiz_id:
+        join_room(f'quiz_{quiz_id}')
+        emit('system_message', {
+            'message': f'Joined quiz room {quiz_id}',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+
+@socketio.on('leave_quiz_room')
+def handle_leave_quiz_room(data):
+    quiz_id = (data or {}).get('quiz_id')
+    if quiz_id:
+        leave_room(f'quiz_{quiz_id}')
+        emit('system_message', {
+            'message': f'Left quiz room {quiz_id}',
+            'timestamp': datetime.utcnow().isoformat()
+        })
 
 # Error handlers
 @app.errorhandler(404)
