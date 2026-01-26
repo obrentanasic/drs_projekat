@@ -1,4 +1,4 @@
-import { authAPI } from './Api.js';
+import { authAPI } from './api.js';
 
 //  TOKEN HELPER FUNKCIJE
 export const tokenHelper = {

@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react'
 import { toast } from 'react-hot-toast'
 import { authService, tokenHelper } from '../services/auth'
-import { userAPI } from '../services/Api'
+import { userAPI } from '../services/api'
 
 const AuthContext = createContext()
 

@@ -117,8 +117,22 @@ export const userAPI = {
 //  DASHBOARD API
 export const dashboardAPI = {
   getStats: () => api.get('/api/users/stats'), // Koristi postojeći endpoint
-  getQuizzes: () => api.get('/quizzes') 
-};
+  getQuizzes: () => api.get('/api/quizzes') };
+
+//  QUIZ API
+export const quizAPI = {
+  createQuiz: (quizData) => api.post('/api/quizzes', quizData),
+  updateQuiz: (quizId, quizData) => api.put(`/api/quizzes/${quizId}`, quizData),
+  getQuizzes: (status) => {
+    if (status) {
+      return api.get(`/api/quizzes?status=${status}`)
+    }
+    return api.get('/api/quizzes')
+  },
+  getMyQuizzes: () => api.get('/api/quizzes/mine'),
+  approveQuiz: (quizId) => api.post(`/api/quizzes/${quizId}/approve`),
+  rejectQuiz: (quizId, reason) => api.post(`/api/quizzes/${quizId}/reject`, { reason })
+}
 
 //  TOKEN HELPER FUNKCIJE 
 export const tokenHelper = {

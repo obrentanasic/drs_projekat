@@ -6,11 +6,13 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { AuthProvider } from './context/AuthContext'
 
 // Komponente
-import Login from './pages/login'
+import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import AdminPanel from './pages/AdminPanel'
+import CreateQuiz from './pages/CreateQuiz'
+import QuizList from './pages/QuizList'
 import ProtectedRoute from './components/ProtectedRoute'
 import Navbar from './components/Navbar'
 
@@ -121,6 +123,18 @@ function MainLayout() {
           <Route path="/admin" element={
             <ProtectedRoute requiredRole="ADMINISTRATOR">
               <AdminPanel />
+            </ProtectedRoute>
+          } />
+
+                    <Route path="/quizzes" element={
+            <ProtectedRoute>
+              <QuizList />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/create-quiz" element={
+            <ProtectedRoute requiredRole="MODERATOR">
+              <CreateQuiz />
             </ProtectedRoute>
           } />
           
