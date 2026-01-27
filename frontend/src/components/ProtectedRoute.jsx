@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { CircularProgress, Box, Typography } from '@mui/material'
 
-const ProtectedRoute = ({ children, requiredRole }) => {
+const ProtectedRoute = ({ children, requiredRole, allowAdmin = true }) => {
   const { user, isAuthenticated, isLoading } = useAuth()
   const location = useLocation()
 
@@ -50,8 +50,14 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     const requiredRoleValue = roleHierarchy[requiredRole] || 0
 
     // ADMIN ima pristup svemu
-    if (user.role === 'ADMINISTRATOR') {
-      // Admin može pristupiti svim stranicama
+    if (user.role === 'ADMINISTRATOR' && allowAdmin) {
+      // Admin može pristupiti svim stranicama (osim ako nije eksplicitno blokirano)
+    }
+    // Admin nema pristup kada je eksplicitno blokirano
+    else if (user.role === 'ADMINISTRATOR' && !allowAdmin) {
+      console.log(' ProtectedRoute: Admin access blocked for this route')
+
+      return <Navigate to="/dashboard" replace />
     }
     // MODERATOR može pristupiti svojim i player stranicama
     else if (user.role === 'MODERATOR' && requiredRoleValue <= 2) {

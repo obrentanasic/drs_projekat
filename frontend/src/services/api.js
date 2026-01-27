@@ -215,7 +215,7 @@ export const tokenHelper = {
   //  PROVERI DA LI JE KORISNIK MODERATOR
   isModerator: () => {
     const user = tokenHelper.getUser();
-    return user && (user.role === 'MODERATOR' || user.role === 'ADMINISTRATOR');
+    return user && user.role === 'MODERATOR';
   },
   
   //  PROVERI DA LI JE KORISNIK IGRAČ

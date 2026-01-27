@@ -133,7 +133,7 @@ function MainLayout() {
           } />
 
           <Route path="/create-quiz" element={
-            <ProtectedRoute requiredRole="MODERATOR">
+            <ProtectedRoute requiredRole="MODERATOR" allowAdmin={false}>
               <CreateQuiz />
             </ProtectedRoute>
           } />

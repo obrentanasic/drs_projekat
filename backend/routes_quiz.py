@@ -48,7 +48,7 @@ def build_quiz_from_dto(quiz, dto):
 
 
 @quiz_bp.route('/quizzes', methods=['POST'])
-@role_required(ROLE_MODERATOR, ROLE_ADMIN)
+@role_required(ROLE_MODERATOR)
 def create_quiz(user_id):
     if not request.is_json:
         return jsonify(ErrorResponseDTO(

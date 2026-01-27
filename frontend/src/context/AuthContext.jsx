@@ -243,13 +243,12 @@ export const AuthProvider = ({ children }) => {
 
   const hasRole = (role) => {
     if (!user) return false
-    if (user.role === 'ADMINISTRATOR') return true
     return user.role === role
   }
 
   const isAdmin = () => hasRole('ADMINISTRATOR')
-  const isModerator = () => hasRole('MODERATOR') || isAdmin()
-  const isPlayer = () => hasRole('IGRAČ') || isModerator()
+  const isModerator = () => hasRole('MODERATOR')
+  const isPlayer = () => hasRole('IGRAČ')
 
   const value = {
     user,

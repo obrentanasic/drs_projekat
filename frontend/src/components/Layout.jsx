@@ -68,7 +68,7 @@ const Layout = ({ children }) => {
     { text: 'Quizzes', icon: <QuizIcon />, path: '/quizzes' },
   ]
 
-  if (user?.role === 'moderator' || user?.role === 'admin') {
+  if (user?.role === 'moderator') {
     menuItems.push({ text: 'Create Quiz', icon: <AddIcon />, path: '/create-quiz' })
   }
 
