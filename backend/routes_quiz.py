@@ -22,6 +22,11 @@ from models import (
     QUIZ_STATUS_REJECTED,
     VALID_QUIZ_STATUSES
 )
+import requests
+
+QUIZ_SERVICE_URL = "http://quiz_service:5001"
+
+
 
 quiz_bp = Blueprint('quiz', __name__)
 
@@ -238,3 +243,118 @@ def reject_quiz(user_id, quiz_id):
     socketio.emit('quiz_rejected', payload)
     
     return jsonify(payload), 200
+
+
+@quiz_bp.route('/quizzes/<int:quiz_id>/play', methods=['GET'])
+@token_required
+def get_quiz_for_play(user_id, quiz_id):
+    """Get quiz for playing (without correct answers)"""
+    from sqlalchemy.orm import joinedload
+    
+    quiz = Quiz.query.options(
+        joinedload(Quiz.questions).joinedload(QuizQuestion.answers)
+    ).get(quiz_id)
+    
+    if not quiz:
+        return jsonify(ErrorResponseDTO(
+            error='Kviz nije pronađen',
+            code='quiz_not_found'
+        ).dict()), 404
+    
+    if quiz.status != QUIZ_STATUS_APPROVED:
+        return jsonify(ErrorResponseDTO(
+            error='Kviz nije dostupan za igranje',
+            code='quiz_not_available'
+        ).dict()), 403
+    
+    # Convert to dict without showing correct answers
+    quiz_dict = quiz.to_dict(include_questions=True, include_answers=True)
+    
+    # Remove is_correct from answers for security
+    for question in quiz_dict.get('questions', []):
+        for answer in question.get('answers', []):
+            answer.pop('is_correct', None)
+    
+    return jsonify(quiz_dict), 200
+
+
+@quiz_bp.route('/quizzes/<int:quiz_id>/submit', methods=['POST'])
+@token_required
+def submit_quiz_answers(user_id, quiz_id):
+    """Submit quiz answers - proxied to Quiz Service"""
+    if not request.is_json:
+        return jsonify(ErrorResponseDTO(
+            error='JSON data required',
+            code='json_required'
+        ).dict()), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify(ErrorResponseDTO(
+            error='Korisnik nije pronađen',
+            code='user_not_found'
+        ).dict()), 404
+    
+    # Forward to Quiz Service with user info
+    data = request.json
+    data['user_id'] = str(user_id)
+    data['user_email'] = user.email
+    data['user_name'] = f"{user.first_name} {user.last_name}"
+    
+    try:
+        response = requests.post(
+            f"{QUIZ_SERVICE_URL}/quizzes/{quiz_id}/submit",
+            json=data,
+            timeout=10
+        )
+        return response.json(), response.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify(ErrorResponseDTO(
+            error='Quiz service unavailable',
+            code='service_unavailable'
+        ).dict()), 503
+
+
+@quiz_bp.route('/quizzes/<int:quiz_id>/leaderboard', methods=['GET'])
+@token_required
+def get_quiz_leaderboard(user_id, quiz_id):
+    """Get quiz leaderboard - proxied to Quiz Service"""
+    try:
+        response = requests.get(
+            f"{QUIZ_SERVICE_URL}/quizzes/{quiz_id}/results",
+            timeout=10
+        )
+        return response.json(), response.status_code
+    except requests.exceptions.RequestException:
+        return jsonify([]), 200
+
+
+@quiz_bp.route('/users/my-results', methods=['GET'])
+@token_required
+def get_my_results(user_id):
+    """Get current user's quiz results"""
+    try:
+        response = requests.get(
+            f"{QUIZ_SERVICE_URL}/users/{user_id}/results",
+            timeout=10
+        )
+        return response.json(), response.status_code
+    except requests.exceptions.RequestException:
+        return jsonify([]), 200
+
+
+@quiz_bp.route('/quizzes/<int:quiz_id>/statistics', methods=['GET'])
+@role_required(ROLE_ADMIN, ROLE_MODERATOR)
+def get_quiz_stats(user_id, quiz_id):
+    """Get quiz statistics"""
+    try:
+        response = requests.get(
+            f"{QUIZ_SERVICE_URL}/quizzes/{quiz_id}/statistics",
+            timeout=10
+        )
+        return response.json(), response.status_code
+    except requests.exceptions.RequestException:
+        return jsonify(ErrorResponseDTO(
+            error='Statistics unavailable',
+            code='service_unavailable'
+        ).dict()), 503

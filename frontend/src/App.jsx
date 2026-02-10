@@ -15,6 +15,7 @@ import CreateQuiz from './pages/CreateQuiz'
 import QuizList from './pages/QuizList'
 import ProtectedRoute from './components/ProtectedRoute'
 import Navbar from './components/Navbar'
+import PlayQuiz from './pages/PlayQuiz';
 
 // Tema
 const theme = createTheme({
@@ -91,6 +92,7 @@ function App() {
           
           {/* Sve ostale rute sa Navbar-om */}
           <Route path="/*" element={<MainLayout />} />
+
         </Routes>
       </AuthProvider>
     </ThemeProvider>
@@ -114,6 +116,11 @@ function MainLayout() {
             </ProtectedRoute>
           } />
           
+            <Route path="/quiz/:id/play" element={
+            <ProtectedRoute>
+              <PlayQuiz />
+            </ProtectedRoute>
+          } />
           <Route path="/profile" element={
             <ProtectedRoute>
               <Profile />

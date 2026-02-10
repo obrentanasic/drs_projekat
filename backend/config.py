@@ -15,7 +15,7 @@ class Config:
     # Database 
     SQLALCHEMY_DATABASE_URI = os.getenv(
         'DATABASE_URL', 
-        'postgresql://postgres:postgres@localhost:5432/quizplatform_db'
+        'postgresql://postgres:postgres@localhost:5432/quizplatform_db1'
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     

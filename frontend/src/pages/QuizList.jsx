@@ -7,14 +7,21 @@ import {
   Typography,
   Chip,
   Alert,
+  Button,
 } from '@mui/material'
 import { quizAPI } from '../services/api'
 import websocketService from '../services/websocket'
-
+import { useNavigate } from 'react-router-dom'
 const QuizList = () => {
   const [quizzes, setQuizzes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const navigate = useNavigate()
+
+  const startQuiz = (quizId) => {
+    navigate(`/quiz/${quizId}/play`)
+  }
+  
 
   const loadQuizzes = async () => {
     try {
@@ -28,6 +35,8 @@ const QuizList = () => {
       setLoading(false)
     }
   }
+  
+
 
   useEffect(() => {
     loadQuizzes()
@@ -80,6 +89,11 @@ const QuizList = () => {
                 <Typography variant="body2" color="text.secondary">
                   Questions: {quiz.question_count}
                 </Typography>
+                <Box mt={2}>
+                  <Button variant="contained" color="primary" onClick={() => startQuiz(quiz.id)}>
+                    Play Quiz
+                  </Button>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
