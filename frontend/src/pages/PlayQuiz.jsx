@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { quizAPI } from '../services/api';
 import '../App.css';
 
 const PlayQuiz = () => {
@@ -26,11 +26,7 @@ const PlayQuiz = () => {
 
   const fetchQuiz = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `http://localhost:5000/quizzes/${id}/play`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await quizAPI.getQuizForPlay(id);
       console.log('Quiz data:', response.data);
       setQuiz(response.data);
       setTimeLeft(response.data.duration_seconds);
@@ -87,15 +83,7 @@ const PlayQuiz = () => {
     const timeSpent = Math.floor((Date.now() - startTime.current) / 1000);
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.post(
-        `http://localhost:5000/quizzes/${id}/submit`,
-        {
-          answers: answers,
-          time_spent: timeSpent
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await quizAPI.submitQuiz(id, answers, timeSpent);
 
       alert('Quiz submitted! Results will be emailed to you.');
       navigate('/dashboard');

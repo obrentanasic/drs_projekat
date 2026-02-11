@@ -131,7 +131,19 @@ export const quizAPI = {
   },
   getMyQuizzes: () => api.get('/api/quizzes/mine'),
   approveQuiz: (quizId) => api.post(`/api/quizzes/${quizId}/approve`),
-  rejectQuiz: (quizId, reason) => api.post(`/api/quizzes/${quizId}/reject`, { reason })
+  rejectQuiz: (quizId, reason) => api.post(`/api/quizzes/${quizId}/reject`, { reason }),
+  
+  // PLAY QUIZ
+  getQuizForPlay: (quizId) => api.get(`/api/quizzes/${quizId}/play`),
+  submitQuiz: (quizId, answers, timeSpent) => api.post(`/api/quizzes/${quizId}/submit`, { 
+    answers, 
+    time_spent: timeSpent 
+  }),
+  
+  // QUIZ RESULTS
+  getLeaderboard: (quizId) => api.get(`/api/quizzes/${quizId}/leaderboard`),
+  getMyResults: () => api.get('/api/users/my-results'),
+  getQuizStatistics: (quizId) => api.get(`/api/quizzes/${quizId}/statistics`)
 }
 
 //  TOKEN HELPER FUNKCIJE 

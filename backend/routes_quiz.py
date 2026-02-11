@@ -206,6 +206,19 @@ def approve_quiz(user_id, quiz_id):
     quiz.rejection_reason = None
     db.session.commit()
     
+    # Sync quiz to MongoDB for the Quiz Service
+    try:
+        quiz_data = quiz.to_dict(include_questions=True, include_answers=True)
+        response = requests.post(
+            f"{QUIZ_SERVICE_URL}/quizzes/sync",
+            json=quiz_data,
+            timeout=10
+        )
+        if response.status_code != 201:
+            print(f"Warning: Failed to sync quiz {quiz_id} to MongoDB: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: Could not sync quiz to MongoDB: {e}")
+    
     payload = quiz.to_summary_dict()
     socketio.emit('quiz_approved', payload)
     

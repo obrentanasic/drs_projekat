@@ -89,8 +89,11 @@ def calculate_score(quiz, user_answers):
     return total_score, max_score
 
 # ASYNC QUIZ PROCESSING WITH PROCESS
-def process_quiz_in_background(quiz_id, user_id, answers, time_spent, user_email, user_name):
-    """Process quiz results in a separate process"""
+def process_quiz_in_background(mongo_quiz_id, user_id, answers, time_spent, user_email, user_name):
+    """Process quiz results in a separate process
+    Args:
+        mongo_quiz_id: MongoDB ObjectId as string
+    """
     try:
         time.sleep(5)  # Simulate processing
         
@@ -99,15 +102,16 @@ def process_quiz_in_background(quiz_id, user_id, answers, time_spent, user_email
         process_quiz_collection = process_db["quizzes"]
         process_results_collection = process_db["results"]
         
-        quiz = process_quiz_collection.find_one({"_id": ObjectId(quiz_id)})
+        # Find quiz by MongoDB ObjectId
+        quiz = process_quiz_collection.find_one({"_id": ObjectId(mongo_quiz_id)})
         if not quiz:
-            print(f"Quiz {quiz_id} not found")
+            print(f"Quiz {mongo_quiz_id} not found in MongoDB")
             return
         
         total_score, max_score = calculate_score(quiz, answers)
         
         result_data = {
-            "quiz_id": quiz_id,
+            "quiz_id": mongo_quiz_id,  # Store MongoDB ObjectId as string
             "quiz_name": quiz.get("name", ""),
             "user_id": user_id,
             "user_name": user_name,
@@ -134,7 +138,7 @@ def process_quiz_in_background(quiz_id, user_id, answers, time_spent, user_email
         """
         
         send_email(user_email, f"Quiz Results: {quiz.get('name', '')}", email_body)
-        print(f"Quiz {quiz_id} processed for user {user_id}")
+        print(f"Quiz {mongo_quiz_id} processed for user {user_id}")
         
     except Exception as e:
         print(f"Error processing quiz: {str(e)}")
@@ -151,6 +155,45 @@ def health():
     except:
         return {"status": "error"}, 500
 
+@app.route("/quizzes/sync", methods=["POST"])
+def sync_quiz():
+    """Sync quiz from main backend to MongoDB"""
+    try:
+        data = request.json
+        required = ["id", "title", "questions"]
+        for field in required:
+            if field not in data:
+                return {"error": f"Missing: {field}"}, 400
+        
+        # Check if quiz already exists
+        existing = quiz_collection.find_one({"quiz_id": data["id"]})
+        
+        quiz_doc = {
+            "quiz_id": data["id"],  # Store original integer ID
+            "name": data["title"],
+            "duration_seconds": data.get("duration_seconds", 0),
+            "author_name": data.get("author_name", ""),
+            "status": data.get("status", "APPROVED"),
+            "questions": data.get("questions", []),
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        if existing:
+            # Update existing
+            quiz_collection.update_one(
+                {"_id": existing["_id"]},
+                {"$set": quiz_doc}
+            )
+            return {"message": "Quiz updated", "mongo_id": str(existing["_id"])}, 200
+        else:
+            # Insert new
+            result = quiz_collection.insert_one(quiz_doc)
+            return {"message": "Quiz synced", "mongo_id": str(result.inserted_id)}, 201
+            
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 @app.route("/quizzes/<quiz_id>/submit", methods=["POST"])
 def submit_quiz(quiz_id):
     """Submit quiz - async processing with multiprocessing.Process"""
@@ -161,15 +204,16 @@ def submit_quiz(quiz_id):
             if field not in data:
                 return {"error": f"Missing: {field}"}, 400
         
-        quiz = quiz_collection.find_one({"_id": ObjectId(quiz_id)})
+        # Find quiz by integer quiz_id (not MongoDB ObjectId)
+        quiz = quiz_collection.find_one({"quiz_id": int(quiz_id)})
         if not quiz:
-            return {"error": "Quiz not found"}, 404
+            return {"error": "Quiz not found in results database. Make sure the quiz is approved."}, 404
         
         # Start async processing in separate process
         process = Process(
             target=process_quiz_in_background,
             args=(
-                quiz_id,
+                str(quiz["_id"]),  # Pass MongoDB ObjectId as string
                 data["user_id"],
                 data["answers"],
                 data["time_spent"],
@@ -183,6 +227,8 @@ def submit_quiz(quiz_id):
             "message": "Quiz submitted. Results will be emailed.",
             "status": "processing"
         }, 202
+    except ValueError:
+        return {"error": "Invalid quiz ID format"}, 400
     except Exception as e:
         return {"error": str(e)}, 500
 
@@ -190,13 +236,22 @@ def submit_quiz(quiz_id):
 def get_quiz_results(quiz_id):
     """Get leaderboard for a quiz"""
     try:
+        # Find by quiz_id field (integer from main DB)
+        quiz = quiz_collection.find_one({"quiz_id": int(quiz_id)})
+        if not quiz:
+            return jsonify([]), 200
+        
+        # Use MongoDB _id for results query
+        mongo_id = str(quiz["_id"])
         results = list(
-            results_collection.find({"quiz_id": quiz_id})
+            results_collection.find({"quiz_id": mongo_id})
             .sort([("score", DESCENDING), ("time_spent", 1)])
         )
         for r in results:
             serialize_mongo_doc(r)
         return jsonify(results), 200
+    except ValueError:
+        return jsonify([]), 200
     except Exception as e:
         return {"error": str(e)}, 500
 
@@ -218,7 +273,21 @@ def get_user_results(user_id):
 def get_quiz_statistics(quiz_id):
     """Get statistics for a quiz"""
     try:
-        results = list(results_collection.find({"quiz_id": quiz_id}))
+        # Find by quiz_id field (integer from main DB)
+        quiz = quiz_collection.find_one({"quiz_id": int(quiz_id)})
+        if not quiz:
+            return {
+                "quiz_id": quiz_id,
+                "total_attempts": 0,
+                "average_score": 0,
+                "average_time": 0,
+                "highest_score": 0,
+                "lowest_score": 0
+            }, 200
+        
+        # Use MongoDB _id for results query
+        mongo_id = str(quiz["_id"])
+        results = list(results_collection.find({"quiz_id": mongo_id}))
         
         if not results:
             return {
@@ -241,6 +310,8 @@ def get_quiz_statistics(quiz_id):
             "highest_score": max(scores),
             "lowest_score": min(scores)
         }), 200
+    except ValueError:
+        return {"error": "Invalid quiz ID"}, 400
     except Exception as e:
         return {"error": str(e)}, 500
 
