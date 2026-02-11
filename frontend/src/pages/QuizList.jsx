@@ -9,19 +9,32 @@ import {
   Alert,
   Button,
 } from '@mui/material'
+import LeaderboardIcon from '@mui/icons-material/Leaderboard'
 import { quizAPI } from '../services/api'
 import websocketService from '../services/websocket'
 import { useNavigate } from 'react-router-dom'
+import QuizLeaderboard from '../components/QuizLeaderboard'
 const QuizList = () => {
   const [quizzes, setQuizzes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const [selectedQuiz, setSelectedQuiz] = useState(null)
   const navigate = useNavigate()
 
   const startQuiz = (quizId) => {
     navigate(`/quiz/${quizId}/play`)
   }
   
+  const openLeaderboard = (quiz) => {
+    setSelectedQuiz(quiz)
+    setLeaderboardOpen(true)
+  }
+
+  const closeLeaderboard = () => {
+    setLeaderboardOpen(false)
+    setSelectedQuiz(null)
+  }
 
   const loadQuizzes = async () => {
     try {
@@ -89,9 +102,21 @@ const QuizList = () => {
                 <Typography variant="body2" color="text.secondary">
                   Questions: {quiz.question_count}
                 </Typography>
-                <Box mt={2}>
-                  <Button variant="contained" color="primary" onClick={() => startQuiz(quiz.id)}>
+                <Box mt={2} display="flex" gap={1}>
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    onClick={() => startQuiz(quiz.id)}
+                  >
                     Play Quiz
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    color="secondary"
+                    startIcon={<LeaderboardIcon />}
+                    onClick={() => openLeaderboard(quiz)}
+                  >
+                    Rang lista
                   </Button>
                 </Box>
               </CardContent>
@@ -99,6 +124,15 @@ const QuizList = () => {
           </Grid>
         ))}
       </Grid>
+
+      {selectedQuiz && (
+        <QuizLeaderboard
+          open={leaderboardOpen}
+          onClose={closeLeaderboard}
+          quizId={selectedQuiz.id}
+          quizTitle={selectedQuiz.title}
+        />
+      )}
     </Box>
   )
 }
