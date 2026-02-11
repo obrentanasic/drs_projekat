@@ -143,7 +143,10 @@ export const quizAPI = {
   // QUIZ RESULTS
   getLeaderboard: (quizId) => api.get(`/api/quizzes/${quizId}/leaderboard`),
   getMyResults: () => api.get('/api/users/my-results'),
-  getQuizStatistics: (quizId) => api.get(`/api/quizzes/${quizId}/statistics`)
+  getQuizStatistics: (quizId) => api.get(`/api/quizzes/${quizId}/statistics`),
+  
+  // GENERATE PDF REPORT (Admin only)
+  generateReport: (quizId) => api.post(`/api/quizzes/${quizId}/generate-report`)
 }
 
 //  TOKEN HELPER FUNKCIJE 

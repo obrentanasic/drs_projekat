@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
+from rich import _console
 from sqlalchemy.orm import joinedload
+from datetime import datetime
 
 from auth import token_required, role_required
 from dto import (
@@ -22,7 +24,16 @@ from models import (
     QUIZ_STATUS_REJECTED,
     VALID_QUIZ_STATUSES
 )
+from pdf_report_service import pdf_service
+from email_service import email_service
 import requests
+import logging
+
+from flask_cors import cross_origin
+
+
+
+logger = logging.getLogger(__name__)
 
 QUIZ_SERVICE_URL = "http://quiz_service:5001"
 
@@ -322,6 +333,7 @@ def submit_quiz_answers(user_id, quiz_id):
         )
         return response.json(), response.status_code
     except requests.exceptions.RequestException as e:
+        _console.print(f"[red]Error submitting quiz answers: {e}[/red]")
         return jsonify(ErrorResponseDTO(
             error='Quiz service unavailable',
             code='service_unavailable'
@@ -371,3 +383,150 @@ def get_quiz_stats(user_id, quiz_id):
             error='Statistics unavailable',
             code='service_unavailable'
         ).dict()), 503
+
+
+@quiz_bp.route('/quizzes/<int:quiz_id>/generate-report', methods=['POST'])
+@cross_origin()
+@role_required(ROLE_ADMIN)
+def generate_quiz_report(user_id, quiz_id):
+    """
+    Generise PDF Izveštaj o rezultatima kviza i šalje ga administratoru na email
+    
+    Samo ADMINISTRATOR može generisati Izveštaje
+    """
+    logger.info(f"Generisanje Izveštaja za kviz {quiz_id} od strane korisnika {user_id}")
+    
+    # Dohvati korisnika (administratora)
+    admin = User.query.get(user_id)
+    if not admin:
+        return jsonify(ErrorResponseDTO(
+            error='Korisnik nije pronađen',
+            code='user_not_found'
+        ).dict()), 404
+    
+    # Dohvati kviz
+    quiz = Quiz.query.options(
+        joinedload(Quiz.questions).joinedload(QuizQuestion.answers)
+    ).get(quiz_id)
+    
+    if not quiz:
+        return jsonify(ErrorResponseDTO(
+            error='Kviz nije pronađen',
+            code='quiz_not_found'
+        ).dict()), 404
+    
+    # Kviz mora biti odobren da bi imao rezultate
+    if quiz.status != QUIZ_STATUS_APPROVED:
+        return jsonify(ErrorResponseDTO(
+            error='Izveštaj se može generisati samo za odobrene kvizove',
+            code='quiz_not_approved'
+        ).dict()), 400
+    
+    try:
+        # Dohvati rezultate iz Quiz Service-a
+        logger.info(f"Dohvatanje rezultata sa {QUIZ_SERVICE_URL}/quizzes/{quiz_id}/results")
+        response = requests.get(
+            f"{QUIZ_SERVICE_URL}/quizzes/{quiz_id}/results",
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Greška pri dohvatanju rezultata: {response.status_code}")
+            return jsonify(ErrorResponseDTO(
+                error='Rezultati nisu dostupni',
+                code='results_unavailable'
+            ).dict()), 503
+        
+        # Quiz Service vraća direktno listu rezultata
+        results_raw = response.json()
+        
+        # Provjeri tip odgovora
+        if isinstance(results_raw, list):
+            results_list = results_raw
+        else:
+            # Fallback ako vraća dictionary sa 'results' ključem
+            results_list = results_raw.get('results', [])
+        
+        logger.info(f"Dohvaćeno {len(results_list)} rezultata")
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Greška pri komunikaciji sa Quiz Service: {e}")
+        return jsonify(ErrorResponseDTO(
+            error='Quiz service nije dostupan',
+            code='service_unavailable'
+        ).dict()), 503
+
+    # Pripremi podatke za PDF
+    quiz_data = quiz.to_dict(include_questions=True, include_answers=True)
+
+    # Izračunaj statistiku
+    if results_list:
+        scores = [r.get('score', 0) for r in results_list]
+        percentages = [r.get('percentage', 0) for r in results_list]
+        
+        stats = {
+            'total_attempts': len(results_list),
+            'average_score': sum(scores) / len(scores) if scores else 0,
+            'average_percentage': sum(percentages) / len(percentages) if percentages else 0,
+            'max_score': max(scores) if scores else 0,
+            'min_score': min(scores) if scores else 0,
+            'max_possible_score': sum(q['points'] for q in quiz_data.get('questions', [])),
+            'results': results_list
+        }
+    else:
+        # Nema rezultata
+        max_possible = sum(q['points'] for q in quiz_data.get('questions', []))
+        stats = {
+            'total_attempts': 0,
+            'average_score': 0,
+            'average_percentage': 0,
+            'max_score': 0,
+            'min_score': 0,
+            'max_possible_score': max_possible,
+            'results': []
+        }
+    
+    try:
+        # Generiši PDF
+        logger.info("Generisanje PDF Izveštaja...")
+        pdf_buffer = pdf_service.generate_quiz_report(quiz_data, stats)
+        
+        # Kreiraj filename
+        safe_title = "".join(c for c in quiz.title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        filename = f"Izvestaj_{safe_title}_{quiz_id}_{admin.id}_{int(datetime.now().timestamp())}.pdf"
+        
+        # Pošalji email sa PDF-om
+        logger.info(f"Slanje Izveštaja na email: {admin.email}")
+        email_sent = email_service.send_pdf_report_email(
+            to_email=admin.email,
+            first_name=admin.first_name,
+            quiz_title=quiz.title,
+            pdf_buffer=pdf_buffer,
+            filename=filename
+        )
+        
+        if email_sent:
+            logger.info(f"Izveštaj uspešno poslan na {admin.email}")
+            return jsonify({
+                'message': f'PDF Izveštaj je uspešno generisan i poslan na {admin.email}',
+                'quiz_id': quiz_id,
+                'quiz_title': quiz.title,
+                'email': admin.email,
+                'total_results': stats['total_attempts'],
+                'report_generated_at': datetime.now().isoformat()
+            }), 200
+        else:
+            logger.error("Slanje emaila neuspešno")
+            return jsonify(ErrorResponseDTO(
+                error='Izveštaj je generisan ali slanje emaila nije uspelo. Provjerite email postavke.',
+                code='email_send_failed'
+            ).dict()), 500
+            
+    except Exception as e:
+        logger.error(f"Greška pri generisanju Izveštaja: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify(ErrorResponseDTO(
+            error=f'Greška pri generisanju Izveštaja: {str(e)}',
+            code='report_generation_failed'
+        ).dict()), 500

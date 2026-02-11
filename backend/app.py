@@ -1,6 +1,6 @@
 import token
 from flask import Flask, jsonify, send_from_directory, request
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 from flask_socketio import SocketIO, emit
 from flask_socketio import emit, join_room, leave_room
 from flask_jwt_extended import JWTManager
@@ -23,6 +23,8 @@ from auth import auth_bp
 from routes_users import users_bp
 from routes_quiz import quiz_bp
 
+
+
 load_dotenv()
 
 # Konfiguracija logginga
@@ -34,7 +36,14 @@ app = Flask(__name__, static_folder='uploads')
 app.config.from_object(Config)
 
 # CORS
-CORS(app, origins=Config.CORS_ORIGINS, supports_credentials=True)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": Config.CORS_ORIGINS,
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
 # JWT
 jwt = JWTManager(app)

@@ -50,6 +50,7 @@ import {
   Warning as WarningIcon,
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -81,12 +82,14 @@ const AdminPanel = () => {
   
 // Quiz moderation
   const [pendingQuizzes, setPendingQuizzes] = useState([])
+  const [approvedQuizzes, setApprovedQuizzes] = useState([])
   const [quizLoading, setQuizLoading] = useState(false)
   const [quizError, setQuizError] = useState('')
   const [rejectDialog, setRejectDialog] = useState(false)
   const [selectedQuiz, setSelectedQuiz] = useState(null)
   const [rejectionReason, setRejectionReason] = useState('')
   const [quizActionLoading, setQuizActionLoading] = useState(false)
+  const [reportGenerating, setReportGenerating] = useState({})
 
   // Dialogs
   const [changeRoleDialog, setChangeRoleDialog] = useState(false)
@@ -111,6 +114,7 @@ const AdminPanel = () => {
     
     console.log(' AdminPanel loaded for:', user.email)
     fetchData()
+    fetchApprovedQuizzes()
   }, [user, isAdmin, navigate, page, rowsPerPage, search, roleFilter, statusFilter])
 
   useEffect(() => {
@@ -183,12 +187,41 @@ const AdminPanel = () => {
     }
   }
 
+  const fetchApprovedQuizzes = async () => {
+    try {
+      const response = await quizAPI.getQuizzes('APPROVED')
+      setApprovedQuizzes(response.data.quizzes || [])
+    } catch (err) {
+      console.error('Failed to load approved quizzes:', err)
+    }
+  }
+
+  const handleGenerateReport = async (quizId, quizTitle) => {
+    try {
+      setReportGenerating(prev => ({ ...prev, [quizId]: true }))
+      const response = await quizAPI.generateReport(quizId)
+      toast.success(`Izveštaj za "${quizTitle}" je uspešno generisan i poslan na vaš email!`,
+         {
+        duration: 5000
+      })
+      console.log('Report generated:', response.data)
+    } catch (err) {
+      
+      console.error('Failed to generate report:', err)
+      toast.error(err.response?.data?.error || 'Greška pri generisanju Izveštaja')
+    } finally {
+      setReportGenerating(prev => ({ ...prev, [quizId]: false }))
+    }
+  }
+
   const handleApproveQuiz = async (quizId) => {
     try {
       setQuizActionLoading(true)
       await quizAPI.approveQuiz(quizId)
       toast.success('Quiz approved')
       setPendingQuizzes((prev) => prev.filter((quiz) => quiz.id !== quizId))
+      // Refresh approved quizzes
+      fetchApprovedQuizzes()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to approve quiz')
     } finally {
@@ -587,6 +620,77 @@ const AdminPanel = () => {
                           Reject
                         </Button>
                       </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
+      {/* APPROVED QUIZZES WITH REPORT GENERATION */}
+      <Paper sx={{ p: 4, mb: 6, borderRadius: 3, boxShadow: 2 }}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} mb={3} flexWrap="wrap">
+          <Box display="flex" alignItems="center" gap={2}>
+            <CheckIcon sx={{ fontSize: 36, color: 'success.main' }} />
+            <Typography variant="h4" fontWeight="bold">
+              Odobreni Kvizovi - Generisanje Izveštaja
+            </Typography>
+          </Box>
+          <Button variant="outlined" onClick={fetchApprovedQuizzes} startIcon={<RefreshIcon />}>
+            Refresh
+          </Button>
+        </Box>
+
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Generisite PDF Izveštaj sa rezultatima bilo kog odobrenog kviza. Izveštaj će biti poslan na vaš email.
+        </Alert>
+
+        {approvedQuizzes.length === 0 ? (
+          <Alert severity="info">Nema odobrenih kvizova.</Alert>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell><strong>Kviz</strong></TableCell>
+                  <TableCell><strong>Autor</strong></TableCell>
+                  <TableCell><strong>Trajanje</strong></TableCell>
+                  <TableCell><strong>Pitanja</strong></TableCell>
+                  <TableCell><strong>Kreirano</strong></TableCell>
+                  <TableCell align="right"><strong>Izveštaj</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {approvedQuizzes.map((quiz) => (
+                  <TableRow key={quiz.id} hover>
+                    <TableCell>
+                      <Typography fontWeight="bold">{quiz.title}</Typography>
+                    </TableCell>
+                    <TableCell>{quiz.author_name}</TableCell>
+                    <TableCell>{quiz.duration_seconds}s</TableCell>
+                    <TableCell>{quiz.question_count}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {formatDate(quiz.created_at)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Generiši i pošalji PDF Izveštaj na email">
+                        <span>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            startIcon={reportGenerating[quiz.id] ? <CircularProgress size={16} color="inherit" /> : <PdfIcon />}
+                            onClick={() => handleGenerateReport(quiz.id, quiz.title)}
+                            disabled={reportGenerating[quiz.id]}
+                          >
+                            {reportGenerating[quiz.id] ? 'Generišem...' : 'Generiši Izveštaj'}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))}
