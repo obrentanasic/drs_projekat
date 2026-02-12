@@ -76,6 +76,24 @@ services:
       timeout: 5s
       retries: 10
 
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: quiz_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: /
+      VITE_BACKEND_TARGET: http://backend:5000
+      VITE_BACKEND_WS_TARGET: ws://backend:5000
+      CHOKIDAR_USEPOLLING: 'true'
+    depends_on:
+      backend:
+        condition: service_started
+
+
   backend:
     build: .
     container_name: quiz_backend

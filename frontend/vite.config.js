@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const backendTarget = process.env.VITE_BACKEND_TARGET || 'http://localhost:5000'
+const backendWsTarget = process.env.VITE_BACKEND_WS_TARGET || 'ws://localhost:5000'
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -9,19 +12,16 @@ export default defineConfig({
     strictPort: false, // Ne baci error ako je port zauzet
     proxy: {
       '/api': {
-        target: 'http://localhost:5000', // Tvoj Flask backend
-        changeOrigin: true,
+        target: backendTarget, // Flask backend        changeOrigin: true,
         secure: false,
         rewrite: (path) => path,
       },
       '/uploads': {
-        target: 'http://localhost:5000', // Za slike
-        changeOrigin: true,
+        target: backendTarget, // Za slike        changeOrigin: true,
         secure: false,
       },
       '/socket.io': {
-        target: 'ws://localhost:5000', // WebSocket proxy
-        ws: true,
+        target: backendWsTarget, // WebSocket proxy        ws: true,
         changeOrigin: true,
       }
     },
